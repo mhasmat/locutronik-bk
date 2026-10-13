@@ -30,6 +30,8 @@ class Order(models.Model):
     payment_provider = models.CharField(max_length=50, blank=True)
     payment_reference = models.CharField(max_length=200, blank=True)
 
+    email_sent = models.BooleanField(default=False)
+
     class Meta:
         ordering = ['-created_at']
 

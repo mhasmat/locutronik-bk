@@ -151,12 +151,14 @@ def confirm_order_payment(order, payment_provider='', payment_reference=''):
 
         Ticket.objects.bulk_create(tickets_to_create)
 
-        # Encolamos el envío del email (asíncrono, no bloquea la respuesta al webhook)
+        # El email será enviado por el cron job (endpoint /api/cron/send-pending-emails/)
+        # o podemos enviarlo inmediatamente si querés velocidad
         try:
-            send_purchase_confirmation.delay(str(order.id))
+            send_purchase_confirmation(str(order.id))
+            order.email_sent = True
+            order.save(update_fields=['email_sent'])
         except Exception as e:
-            # Si Celery no está disponible, no rompemos el flujo de pago
-            print(f"[WARN] No se pudo encolar el email: {e}")
+            print(f"[WARN] No se pudo enviar el email inmediato: {e}")
 
         return True        
 
