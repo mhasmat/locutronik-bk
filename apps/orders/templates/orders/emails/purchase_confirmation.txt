@@ -1,0 +1,36 @@
+Hola {{ buyer_name|default:order.user.username }},
+
+¡Gracias por tu compra!
+
+EVENTO
+------
+{{ event.name }}
+Fecha: {{ event.start_time|date:"l d/m/Y H:i" }}
+Lugar: {{ event.venue.name }}, {{ event.venue.address }}, {{ event.venue.city }}
+
+RESUMEN DE TU ORDEN
+-------------------
+Orden #{{ order.id }}
+Fecha de compra: {{ order.paid_at|date:"d/m/Y H:i" }}
+
+{% for item in order.items_snapshot %}• {{ item.quantity }}x {{ item.ticket_type_name }} - ${{ item.price }} c/u
+{% endfor %}
+
+Subtotal:    ${{ order.subtotal }}
+Cargo por servicio: ${{ order.platform_fee }}
+TOTAL:       ${{ order.total_amount }}
+
+TUS ENTRADAS
+------------
+{% for ticket in tickets %}Ticket {{ forloop.counter }}: {{ ticket.ticket_type_name }}
+Código QR: {{ ticket.qr_code }}
+Presentá este código en el ingreso al evento.
+{% if not forloop.last %}
+{% endif %}
+{% endfor %}
+
+Podés ver y descargar tus entradas desde tu cuenta en Ticketera.
+
+¡Que lo disfrutes!
+
+El equipo de Ticketera

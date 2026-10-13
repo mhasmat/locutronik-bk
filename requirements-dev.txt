@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Solo desarrollo
+ipython==8.30.0
