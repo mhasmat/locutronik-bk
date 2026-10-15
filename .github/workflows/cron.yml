@@ -1,0 +1,48 @@
+name: Locutronik Cron
+
+on:
+  schedule:
+    # Expire Orders: cada 5 minutos
+    - cron: "*/5 * * * *"
+    # Send Pending Emails: cada 5 minutos (offset de 2 min)
+    - cron: "2-59/5 * * * *"
+    # Sync MP Payments: cada 15 minutos
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # Permite ejecutarlo a mano desde GitHub
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determinar tarea a ejecutar
+        id: task
+        run: |
+          # Si es ejecución manual, elegimos la primera tarea
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "endpoint=expire-orders" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Calculamos los minutos desde la hora
+          MINUTE=$(date -u +%M)
+          MIN=$((10#$MINUTE))
+
+          if [ $((MIN % 15)) -eq 0 ]; then
+            echo "endpoint=sync-mp-payments" >> $GITHUB_OUTPUT
+          elif [ $((MIN % 5)) -eq 2 ]; then
+            echo "endpoint=send-pending-emails" >> $GITHUB_OUTPUT
+          else
+            echo "endpoint=expire-orders" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Llamar al endpoint
+        run: |
+          echo "Ejecutando: ${{ steps.task.outputs.endpoint }}"
+          curl -X POST \
+            -H "X-Cron-Token: ${{ secrets.CRON_SECRET_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --max-time 300 \
+            --retry 2 \
+            --retry-delay 10 \
+            -w "\nHTTP Status: %{http_code}\nTime: %{time_total}s\n" \
+            "https://locutronik-bk.onrender.com/api/cron/${{ steps.task.outputs.endpoint }}/"
