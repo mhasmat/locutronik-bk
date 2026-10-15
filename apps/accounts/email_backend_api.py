@@ -1,3 +1,4 @@
+import base64
 import logging
 from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
@@ -60,7 +61,7 @@ class SendGridAPIBackend(BaseEmailBackend):
                 if message.body:
                     mail.add_content(message.body, 'text/plain')
 
-                # Adjuntos — preservando Content-ID para imágenes inline
+                # Adjuntos — SendGrid requiere base64 como string
                 for attachment in message.attachments:
                     if isinstance(attachment, tuple):
                         # Formato (filename, content, mimetype)
@@ -77,11 +78,17 @@ class SendGridAPIBackend(BaseEmailBackend):
                         raw_cid = attachment.get('Content-ID', '')
                         content_id = raw_cid.strip('<>').strip() if raw_cid else None
 
-                        # Si tiene Content-ID, es inline; sino, es adjunto normal
                         disposition = 'inline' if content_id else 'attachment'
 
+                    # 👇 FIX: codificar bytes a base64 string
+                    if isinstance(content, bytes):
+                        encoded_content = base64.b64encode(content).decode('ascii')
+                    else:
+                        # Ya es string (asumiendo base64)
+                        encoded_content = content
+
                     att = Attachment(
-                        FileContent(content),
+                        FileContent(encoded_content),  # 👈 ahora es str
                         FileName(filename),
                         FileType(mimetype or 'application/octet-stream'),
                         Disposition(disposition),
