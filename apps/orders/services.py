@@ -1,3 +1,6 @@
+import threading
+from django.db import transaction
+
 from decimal import Decimal
 from datetime import timedelta
 
@@ -109,6 +112,17 @@ def create_order(user, event_id, items):
         return order, None
 
 
+def _send_email_async(order_id):
+    """Envía el email en un hilo aparte para no bloquear."""
+    from apps.orders.tasks import send_purchase_confirmation
+    try:
+        send_purchase_confirmation.__wrapped__(str(order_id))
+        # Marcamos como enviado
+        Order.objects.filter(id=order_id).update(email_sent=True)
+        print(f"[EMAIL] Enviado para orden {order_id}")
+    except Exception as e:
+        print(f"[EMAIL] Error en orden {order_id}: {e}")
+
 def confirm_order_payment(order, payment_provider='', payment_reference=''):
     """
     Marca la orden como pagada y genera los tickets con sus QRs.
@@ -149,7 +163,17 @@ def confirm_order_payment(order, payment_provider='', payment_reference=''):
                     status='valid',
                 ))
 
-        Ticket.objects.bulk_create(tickets_to_create)        
+        Ticket.objects.bulk_create(tickets_to_create)
+
+                # Enviar email en segundo plano (después de que la transacción se confirme)
+        order_id = order.id
+        transaction.on_commit(
+            lambda: threading.Thread(
+                target=_send_email_async,
+                args=(order_id,),
+                daemon=True,
+            ).start()
+        )                
 
         return True        
 
