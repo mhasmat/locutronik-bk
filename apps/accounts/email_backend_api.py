@@ -19,7 +19,8 @@ class SendGridAPIBackend(BaseEmailBackend):
         try:
             from sendgrid import SendGridAPIClient
             from sendgrid.helpers.mail import (
-                Mail, Attachment, FileContent, FileName, FileType, Disposition
+                Mail, Attachment, FileContent, FileName, FileType,
+                Disposition, ContentId
             )
         except ImportError:
             logger.error("sendgrid no está instalado")
@@ -59,17 +60,37 @@ class SendGridAPIBackend(BaseEmailBackend):
                 if message.body:
                     mail.add_content(message.body, 'text/plain')
 
-                # Adjuntos (los QRs son PNG)
+                # Adjuntos — preservando Content-ID para imágenes inline
                 for attachment in message.attachments:
                     if isinstance(attachment, tuple):
+                        # Formato (filename, content, mimetype)
                         filename, content, mimetype = attachment
-                        attachment_obj = Attachment(
-                            FileContent(content),
-                            FileName(filename),
-                            FileType(mimetype or 'application/octet-stream'),
-                            Disposition('attachment'),
-                        )
-                        mail.add_attachment(attachment_obj)
+                        content_id = None
+                        disposition = 'attachment'
+                    else:
+                        # Objeto MIMEBase (MIMEImage, MIMEApplication, etc.)
+                        filename = attachment.get_filename() or 'file'
+                        content = attachment.get_payload(decode=True)
+                        mimetype = attachment.get_content_type()
+
+                        # Leemos el Content-ID si existe (imágenes inline)
+                        raw_cid = attachment.get('Content-ID', '')
+                        content_id = raw_cid.strip('<>').strip() if raw_cid else None
+
+                        # Si tiene Content-ID, es inline; sino, es adjunto normal
+                        disposition = 'inline' if content_id else 'attachment'
+
+                    att = Attachment(
+                        FileContent(content),
+                        FileName(filename),
+                        FileType(mimetype or 'application/octet-stream'),
+                        Disposition(disposition),
+                    )
+
+                    if content_id:
+                        att.content_id = ContentId(content_id)
+
+                    mail.add_attachment(att)
 
                 response = sg.send(mail)
 
