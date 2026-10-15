@@ -80,28 +80,32 @@ class SendPendingEmailsCronView(CronAuthMixin, APIView):
             )
 
         from apps.orders.models import Order
-        from apps.orders.tasks import send_purchase_confirmation
-
-        # Órdenes pagadas en los últimos 30 min que aún no tienen email enviado
-        # Usamos el campo paid_at como referencia + un flag que agregaremos
+        from apps.orders.tasks import send_purchase_confirmation        
         from django.utils import timezone
         from datetime import timedelta
 
-        since = timezone.now() - timedelta(minutes=30)
+        # Órdenes pagadas en las últimas 6 horas sin email enviado
+        since = timezone.now() - timedelta(hours=6)
         pending = Order.objects.filter(
             status='paid',
             paid_at__gte=since,
-            email_sent=False,   # ← vamos a agregar este campo
+            email_sent=False,
         )
 
-        count = 0
+        sent_count = 0
+        error_count = 0
+
         for order in pending:
             try:
                 send_purchase_confirmation.__wrapped__(str(order.id))
                 order.email_sent = True
                 order.save(update_fields=['email_sent'])
-                count += 1
+                sent_count += 1
             except Exception as e:
-                print(f"[CRON] Error enviando email de orden {order.id}: {e}")
+                print(f"[CRON EMAIL] Error en orden {order.id}: {e}")
+                error_count += 1
 
-        return Response({'detail': f'{count} emails enviados.'})
+        return Response({
+            'sent': sent_count,
+            'errors': error_count,
+        })

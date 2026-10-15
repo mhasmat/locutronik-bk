@@ -149,16 +149,7 @@ def confirm_order_payment(order, payment_provider='', payment_reference=''):
                     status='valid',
                 ))
 
-        Ticket.objects.bulk_create(tickets_to_create)
-
-        # El email será enviado por el cron job (endpoint /api/cron/send-pending-emails/)
-        # o podemos enviarlo inmediatamente si querés velocidad
-        try:
-            send_purchase_confirmation(str(order.id))
-            order.email_sent = True
-            order.save(update_fields=['email_sent'])
-        except Exception as e:
-            print(f"[WARN] No se pudo enviar el email inmediato: {e}")
+        Ticket.objects.bulk_create(tickets_to_create)        
 
         return True        
 

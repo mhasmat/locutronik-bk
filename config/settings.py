@@ -263,6 +263,7 @@ DEFAULT_FROM_EMAIL = config(
     'DEFAULT_FROM_EMAIL',
     default='Locutronik <no-reply@locutronik.local>'
 )
+EMAIL_TIMEOUT = 10  # segundos máximos para conectar/enviar
 
 
 # ============================================
