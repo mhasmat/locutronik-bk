@@ -28,3 +28,6 @@ celery==5.4.0
 # Producción
 gunicorn==26.2.0
 whitenoise==6.12.0
+
+# Email
+sendgrid==6.12.5

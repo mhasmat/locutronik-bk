@@ -265,6 +265,9 @@ DEFAULT_FROM_EMAIL = config(
 )
 EMAIL_TIMEOUT = 10  # segundos máximos para conectar/enviar
 
+# SendGrid API (reutilizamos la misma API Key del SMTP)
+SENDGRID_API_KEY = config('EMAIL_HOST_PASSWORD', default='')
+
 
 # ============================================
 # Seguridad en producción (solo si DEBUG=False)

@@ -66,7 +66,6 @@ class SyncMpPaymentsCronView(CronAuthMixin, APIView):
 
 
 class SendPendingEmailsCronView(CronAuthMixin, APIView):
-    """POST /api/cron/send-pending-emails/ — envía emails pendientes."""
     permission_classes = [AllowAny]
     authentication_classes = []
 
@@ -80,8 +79,6 @@ class SendPendingEmailsCronView(CronAuthMixin, APIView):
         from apps.orders.models import Order
         from apps.orders.tasks import send_purchase_confirmation
 
-        # Solo procesamos 5 emails por ejecución
-        # (evita timeouts cuando hay muchas órdenes)
         since = timezone.now() - timedelta(hours=24)
         pending = Order.objects.filter(
             status='paid',
@@ -91,6 +88,7 @@ class SendPendingEmailsCronView(CronAuthMixin, APIView):
 
         sent_count = 0
         error_count = 0
+        errors = []
 
         for order in pending:
             try:
@@ -99,10 +97,12 @@ class SendPendingEmailsCronView(CronAuthMixin, APIView):
                 order.save(update_fields=['email_sent'])
                 sent_count += 1
             except Exception as e:
-                print(f"[CRON EMAIL] Error en orden {order.id}: {e}")
                 error_count += 1
+                errors.append(f"{order.id}: {str(e)[:100]}")
+                print(f"[CRON EMAIL] Error en orden {order.id}: {e}")
 
         return Response({
             'sent': sent_count,
             'errors': error_count,
+            'details': errors,
         })
