@@ -1,6 +1,6 @@
+import json
 from rest_framework import serializers
 from django.utils import timezone
-
 from .models import Venue, Event, TicketType
 
 
@@ -59,6 +59,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('organizer', 'created_at', 'updated_at')
 
+
 class TicketTypeInputSerializer(serializers.ModelSerializer):
     """
     Serializer específico para el input de ticket_types.
@@ -78,6 +79,7 @@ class TicketTypeInputSerializer(serializers.ModelSerializer):
 class EventCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer para crear/editar. El organizador se asigna automáticamente."""
     ticket_types = TicketTypeInputSerializer(many=True, required=False)
+    image = serializers.ImageField(required=True)
 
     class Meta:
         model = Event
@@ -86,6 +88,34 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
             'status', 'platform_fee_percent', 'ticket_types',
         )
+
+    def to_internal_value(self, data):
+        # Si viene de un formulario multipart, ticket_types es un string JSON
+        if 'ticket_types' in data and isinstance(data['ticket_types'], str):
+            try:
+                data = data.copy() # Hacemos una copia mutable
+                data['ticket_types'] = json.loads(data['ticket_types'])
+            except json.JSONDecodeError:
+                pass
+        return super().to_internal_value(data)
+
+    def validate_image(self, value):
+        """Validación de tamaño y tipo de imagen."""
+        # Tamaño máximo: 5 MB
+        max_size = 5 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError(
+                'La imagen no puede superar los 5 MB.'
+            )
+
+        # Tipos permitidos
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if hasattr(value, 'content_type') and value.content_type not in allowed_types:
+            raise serializers.ValidationError(
+                'Formato no soportado. Usá JPG, PNG o WEBP.'
+            )
+
+        return value
 
     def validate(self, attrs):
         start = attrs.get('start_time')
