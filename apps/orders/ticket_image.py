@@ -184,5 +184,5 @@ def generate_ticket_image(ticket):
 
     # --- Exportar ---
     buf = io.BytesIO()
-    img.save(buf, format='PNG', optimize=True)
+    img.save(buf, format='PDF', optimize=True, resolution=100.0)
     return buf.getvalue()

@@ -167,11 +167,11 @@ class TicketDownloadView(APIView):
 
         try:
             # Generamos la imagen en memoria
-            img_bytes = generate_ticket_image(ticket)
+            pdf_bytes = generate_ticket_image(ticket)
             
             # La devolvemos como archivo adjunto
-            response = HttpResponse(img_bytes, content_type='image/png')
-            response['Content-Disposition'] = f'attachment; filename="entrada-{str(ticket.id)[:8]}.png"'
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="entrada-{str(ticket.id)[:8]}.pdf"'
             return response
         except Exception as e:
             return Response({'detail': f'Error generando la entrada: {str(e)}'}, status=500)
