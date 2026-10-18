@@ -1,0 +1,38 @@
+# requirements.in
+
+# Core
+Django
+djangorestframework
+djangorestframework-simplejwt
+
+# Base de datos
+psycopg[binary]
+dj-database-url
+
+# Cache / broker
+redis
+django-redis
+
+# Utilidades
+django-cors-headers
+python-decouple
+Pillow
+
+# QR
+qrcode
+
+# Pagos
+mercadopago
+
+# Emails
+sendgrid
+
+# Storage (Supabase)
+django-supabase-storage
+
+# Tareas asíncronas
+celery
+
+# Producción
+gunicorn
+whitenoise
