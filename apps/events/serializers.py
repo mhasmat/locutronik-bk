@@ -24,7 +24,6 @@ class TicketTypeSerializer(serializers.ModelSerializer):
 
 
 class EventListSerializer(serializers.ModelSerializer):
-    """Serializer liviano para listados."""
     venue = VenueSerializer(read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
     min_price = serializers.SerializerMethodField()
@@ -42,7 +41,6 @@ class EventListSerializer(serializers.ModelSerializer):
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
-    """Serializer completo, con tipos de ticket anidados."""
     venue = VenueSerializer()
     ticket_types = TicketTypeSerializer(many=True, read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
@@ -61,11 +59,6 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
 
 class TicketTypeInputSerializer(serializers.ModelSerializer):
-    """
-    Serializer específico para el input de ticket_types.
-    A diferencia del serializer de lectura, este SÍ permite enviar 'id'
-    para actualizar uno existente.
-    """
     id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
@@ -77,7 +70,6 @@ class TicketTypeInputSerializer(serializers.ModelSerializer):
 
 
 class EventCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer para crear/editar. El organizador se asigna automáticamente."""
     ticket_types = TicketTypeInputSerializer(many=True, required=False)
     image = serializers.ImageField(required=True)
 
@@ -89,44 +81,41 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'status', 'platform_fee_percent', 'ticket_types',
         )
 
-        def to_internal_value(self, data):
-            data = data.copy() # Hacemos una copia mutable para trabajar tranquilos
+    def to_internal_value(self, data):
+        # Hacemos una copia mutable para no romper el QueryDict original
+        data = data.copy()
 
-            # 1. Parsear ticket_types si viene como string JSON del FormData
-            if 'ticket_types' in data and isinstance(data['ticket_types'], str):
+        # 1. Manejo de 'image': si es edición y no viene un archivo real, lo ignoramos
+        if 'image' in data:
+            img = data.get('image')
+            # Si es string (URL vieja), vacío, o None, lo removemos para que no falle
+            if not img or img == 'null' or img == '' or isinstance(img, str):
+                data.pop('image', None)
+
+        # 2. Manejo de 'ticket_types': viene como string JSON desde el FormData
+        if 'ticket_types' in data:
+            val = data['ticket_types']
+            if isinstance(val, str):
                 try:
-                    data['ticket_types'] = json.loads(data['ticket_types'])
+                    data['ticket_types'] = json.loads(val)
                 except json.JSONDecodeError:
                     pass
 
-            # 2. Ignorar 'image' si estamos editando y no es un archivo real
-            if self.instance is not None:
-                image_val = data.get('image')
-                if image_val == '' or image_val is None or isinstance(image_val, str):
-                    # Si es un string (la URL vieja) o está vacío, lo eliminamos
-                    del data['image']
-
-            return super().to_internal_value(data)
+        return super().to_internal_value(data)
 
     def validate_image(self, value):
-        """Validación de tamaño y tipo de imagen."""
-        # Tamaño máximo: 5 MB
-        max_size = 5 * 1024 * 1024
-        if value.size > max_size:
-            raise serializers.ValidationError(
-                'La imagen no puede superar los 5 MB.'
-            )
-
-        # Tipos permitidos
+        if value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError('La imagen no puede superar los 5 MB.')
         allowed_types = ['image/jpeg', 'image/png', 'image/webp']
         if hasattr(value, 'content_type') and value.content_type not in allowed_types:
-            raise serializers.ValidationError(
-                'Formato no soportado. Usá JPG, PNG o WEBP.'
-            )
-
+            raise serializers.ValidationError('Formato no soportado. Usá JPG, PNG o WEBP.')
         return value
 
     def validate(self, attrs):
+        # Si estamos creando (self.instance is None) y no hay imagen, error.
+        if self.instance is None and 'image' not in attrs:
+            raise serializers.ValidationError({'image': 'La imagen es obligatoria para crear un evento.'})
+
         start = attrs.get('start_time')
         end = attrs.get('end_time')
         sale_start = attrs.get('sale_start_time')
@@ -139,7 +128,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         if sale_end and start and sale_end > start:
             raise serializers.ValidationError({'sale_end_time': 'La venta debe cerrar antes del inicio del evento.'})
 
-        # Validar nombres de ticket_types duplicados en el payload
         ticket_types = attrs.get('ticket_types', [])
         names = [tt.get('name', '').strip().lower() for tt in ticket_types if tt.get('name')]
         if len(names) != len(set(names)):
@@ -154,7 +142,7 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         event = Event.objects.create(**validated_data)
 
         for tt_data in ticket_types_data:
-            tt_data.pop('id', None)  # Ignoramos ids en creación
+            tt_data.pop('id', None)
             tt_data['quantity_available'] = tt_data.get('quantity_total', 0)
             TicketType.objects.create(event=event, **tt_data)
 
@@ -163,7 +151,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         ticket_types_data = validated_data.pop('ticket_types', None)
 
-        # Actualizar los campos del evento
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -171,7 +158,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         if ticket_types_data is None:
             return instance
 
-        # Procesar ticket_types
         existing = {tt.id: tt for tt in instance.ticket_types.all()}
         seen_names = set()
 
@@ -185,14 +171,12 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
                 })
             seen_names.add(name.lower())
 
-            # Validar que el id (si viene) pertenece a este evento
             if tt_id and tt_id not in existing:
                 raise serializers.ValidationError({
                     'ticket_types': f'El ticket type con id={tt_id} no pertenece a este evento.'
                 })
 
             if tt_id:
-                # Actualizar existente
                 tt = existing[tt_id]
                 for field in ('name', 'description', 'price', 'max_per_user', 'is_active'):
                     if field in tt_data:
@@ -206,7 +190,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
                 tt.save()
             else:
-                # Crear nuevo
                 tt_data['quantity_available'] = tt_data.get('quantity_total', 0)
                 TicketType.objects.create(event=instance, **tt_data)
 
