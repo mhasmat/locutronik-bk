@@ -55,6 +55,17 @@ class EventViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(organizer=self.request.user)
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            # Esto nos devolverá el error exacto a Postman o al Frontend
+            return Response({
+                "error_de_codigo": str(e),
+                "detalle": traceback.format_exc()
+            }, status=500)
+
     def perform_update(self, serializer):
         # Solo el dueño puede editar (el queryset ya filtra, pero doble check)
         if serializer.instance.organizer != self.request.user:
