@@ -82,17 +82,20 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         )
 
     def to_internal_value(self, data):
-        # Hacemos una copia mutable para no romper el QueryDict original
-        data = data.copy()
+        # 1. Convertimos el QueryDict de Django a un diccionario normal
+        # Esto permite modificar listas y borrar llaves sin que se rompa
+        if hasattr(data, 'dict'):
+            data = data.dict()
+        else:
+            data = dict(data)
 
-        # 1. Manejo de 'image': si es edición y no viene un archivo real, lo ignoramos
+        # 2. Manejo de 'image' (ignorar si es edición y no es un archivo nuevo)
         if 'image' in data:
             img = data.get('image')
-            # Si es string (URL vieja), vacío, o None, lo removemos para que no falle
             if not img or img == 'null' or img == '' or isinstance(img, str):
                 data.pop('image', None)
 
-        # 2. Manejo de 'ticket_types': viene como string JSON desde el FormData
+        # 3. Manejo de 'ticket_types' (parsear el string JSON)
         if 'ticket_types' in data:
             val = data['ticket_types']
             if isinstance(val, str):
