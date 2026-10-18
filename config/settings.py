@@ -41,8 +41,7 @@ INSTALLED_APPS = [
     # Terceros
     'rest_framework',
     'rest_framework_simplejwt',
-    'corsheaders',
-    'storages',
+    'corsheaders',    
 
     # Apps propias
     'apps.accounts',
