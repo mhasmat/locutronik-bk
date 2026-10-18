@@ -201,46 +201,38 @@ USE_TZ = True
 # ============================================
 
 # Supabase Storage (S3-compatible)
-SUPABASE_PROJECT_URL = config('SUPABASE_PROJECT_URL', default='')
-SUPABASE_SERVICE_ROLE_KEY = config('SUPABASE_SERVICE_ROLE_KEY', default='')
-SUPABASE_BUCKET_NAME = 'media'
+SUPABASE_URL = config('SUPABASE_URL', default='')
+SUPABASE_KEY = config('SUPABASE_KEY', default='')
+SUPABASE_BUCKET_NAME = config('SUPABASE_BUCKET_NAME', default='media')
 
-USE_SUPABASE_STORAGE = bool(SUPABASE_PROJECT_URL and SUPABASE_SERVICE_ROLE_KEY)
+USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_KEY)
+
+# ============================================
+# Archivos estáticos y media (Supabase Storage)
+# ============================================
+
+# Supabase Storage
+SUPABASE_URL = config('SUPABASE_URL', default='')
+SUPABASE_KEY = config('SUPABASE_KEY', default='')
+SUPABASE_BUCKET_NAME = config('SUPABASE_BUCKET_NAME', default='media')
+
+USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_KEY)
 
 if USE_SUPABASE_STORAGE:
-    AWS_ACCESS_KEY_ID = SUPABASE_SERVICE_ROLE_KEY
-    AWS_SECRET_ACCESS_KEY = SUPABASE_SERVICE_ROLE_KEY
-    AWS_STORAGE_BUCKET_NAME = SUPABASE_BUCKET_NAME
-    AWS_S3_ENDPOINT_URL = f'{SUPABASE_PROJECT_URL}/storage/v1/s3'
-    AWS_S3_REGION_NAME = 'auto'
-    AWS_S3_ADDRESSING_STYLE = 'path'
-    AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_QUERYSTRING_AUTH = False  # URLs públicas
-    AWS_DEFAULT_ACL = None
-
-    dominio_limpio = SUPABASE_PROJECT_URL.replace('https://', '').rstrip('/')
-    AWS_S3_CUSTOM_DOMAIN = f'{dominio_limpio}/storage/v1/object/public/{SUPABASE_BUCKET_NAME}'
-
-    # Ahora MEDIA_URL usa ese dominio
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
-
     STORAGES = {
         'default': {
-            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
-            'OPTIONS': {
-                'location': '',  # Sin subcarpeta, el bucket ya se llama 'media'
-                'file_overwrite': False,
-            },
+            'BACKEND': 'django_supabase_storage.SupabaseMediaStorage',
         },
         'staticfiles': {
             'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
         },
     }
+    # Opcional: para desactivar el hashing de archivos estáticos
+    # SUPABASE_STATIC_MANIFEST = False
 else:
     # Fallback a filesystem local (desarrollo sin Supabase configurado)
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
-
     STORAGES = {
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
         'staticfiles': {
@@ -251,9 +243,7 @@ else:
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 
 # ============================================
 # Mercado Pago
