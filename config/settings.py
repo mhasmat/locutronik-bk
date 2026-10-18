@@ -210,10 +210,13 @@ if USE_SUPABASE_STORAGE:
     AWS_S3_REGION_NAME = 'auto'
     AWS_S3_SIGNATURE_VERSION = 's3v4'
     AWS_QUERYSTRING_AUTH = False  # URLs públicas
-
     AWS_DEFAULT_ACL = None
 
-    MEDIA_URL = f'{SUPABASE_PROJECT_URL}/storage/v1/object/public/{SUPABASE_BUCKET_NAME}/'
+    dominio_limpio = SUPABASE_PROJECT_URL.replace('https://', '').rstrip('/')
+    AWS_S3_CUSTOM_DOMAIN = f'{dominio_limpio}/storage/v1/object/public/{SUPABASE_BUCKET_NAME}'
+
+    # Ahora MEDIA_URL usa ese dominio
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
 
     STORAGES = {
         'default': {
