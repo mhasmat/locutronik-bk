@@ -89,15 +89,24 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'status', 'platform_fee_percent', 'ticket_types',
         )
 
-    def to_internal_value(self, data):
-        # Si viene de un formulario multipart, ticket_types es un string JSON
-        if 'ticket_types' in data and isinstance(data['ticket_types'], str):
-            try:
-                data = data.copy() # Hacemos una copia mutable
-                data['ticket_types'] = json.loads(data['ticket_types'])
-            except json.JSONDecodeError:
-                pass
-        return super().to_internal_value(data)
+        def to_internal_value(self, data):
+            data = data.copy() # Hacemos una copia mutable para trabajar tranquilos
+
+            # 1. Parsear ticket_types si viene como string JSON del FormData
+            if 'ticket_types' in data and isinstance(data['ticket_types'], str):
+                try:
+                    data['ticket_types'] = json.loads(data['ticket_types'])
+                except json.JSONDecodeError:
+                    pass
+
+            # 2. Ignorar 'image' si estamos editando y no es un archivo real
+            if self.instance is not None:
+                image_val = data.get('image')
+                if image_val == '' or image_val is None or isinstance(image_val, str):
+                    # Si es un string (la URL vieja) o está vacío, lo eliminamos
+                    del data['image']
+
+            return super().to_internal_value(data)
 
     def validate_image(self, value):
         """Validación de tamaño y tipo de imagen."""
