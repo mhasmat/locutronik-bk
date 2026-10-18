@@ -2,6 +2,7 @@ import io
 import qrcode
 
 from django.http import HttpResponse
+from .ticket_image import generate_ticket_image
 from django.utils import timezone
 
 from rest_framework import viewsets, permissions, status
@@ -144,3 +145,33 @@ class TicketQRView(APIView):
         buf = io.BytesIO()
         img.save(buf, format='PNG')
         return HttpResponse(buf.getvalue(), content_type='image/png')
+
+
+class TicketDownloadView(APIView):
+    """
+    GET /api/orders/<order_id>/tickets/<ticket_id>/download/
+    Genera y descarga la imagen completa del ticket en PNG.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, order_id, ticket_id):
+        try:
+            order = Order.objects.get(id=order_id, user=request.user)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Orden no encontrada.'}, status=404)
+
+        try:
+            ticket = order.tickets.get(id=ticket_id)
+        except Ticket.DoesNotExist:
+            return Response({'detail': 'Ticket no encontrado.'}, status=404)
+
+        try:
+            # Generamos la imagen en memoria
+            img_bytes = generate_ticket_image(ticket)
+            
+            # La devolvemos como archivo adjunto
+            response = HttpResponse(img_bytes, content_type='image/png')
+            response['Content-Disposition'] = f'attachment; filename="entrada-{str(ticket.id)[:8]}.png"'
+            return response
+        except Exception as e:
+            return Response({'detail': f'Error generando la entrada: {str(e)}'}, status=500)
