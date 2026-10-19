@@ -29,8 +29,10 @@ Presentá este código en el ingreso al evento.
 {% endif %}
 {% endfor %}
 
-Podés ver y descargar tus entradas desde tu cuenta en Ticketera.
+Adjuntamos tus entradas en formato PDF listas para imprimir.
+
+También podés ver y descargar tus entradas desde tu cuenta en Locutronik.
 
 ¡Que lo disfrutes!
 
-El equipo de Ticketera
+El equipo de Locutronik

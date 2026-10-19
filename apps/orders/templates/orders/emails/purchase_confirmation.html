@@ -60,8 +60,8 @@
                   📅 {{ event.start_time|date:"l d/m/Y · H:i" }}
                 </p>
                 <p style="margin: 0; font-size: 14px; color: #555">
-                  📍 {{ event.venue.name }} — {{ event.venue.address }}, {{
-                  event.venue.city }}
+                  📍 {{ event.venue.name }} — {{ event.venue.address }}{% if
+                  event.venue.city %}, {{ event.venue.city }}{% endif %}
                 </p>
               </td>
             </tr>
@@ -199,7 +199,7 @@
                         "
                       >
                         Ticket {{ forloop.counter }} · {{
-                        ticket.ticket_type_name }}
+                        ticket.ticket_type.name }}
                       </p>
                       <p style="margin: 0 0 12px; font-size: 12px; color: #888">
                         Código: {{ ticket.id }}
@@ -233,7 +233,7 @@
                   es de un solo uso.
                 </p>
                 <p style="margin: 0">
-                  © Ticketera — Gracias por confiar en nosotros.
+                  © Locutronik — Gracias por confiar en nosotros.
                 </p>
               </td>
             </tr>
