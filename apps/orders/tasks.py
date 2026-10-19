@@ -1,17 +1,14 @@
 import io
-import qrcode
-
-from email.mime.image import MIMEImage
-
+from email.mime.application import MIMEApplication
 from celery import shared_task
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.db.models import F
-
-from .models import Order, TicketType
+from .models import Order
 from .services import cancel_order
+from .ticket_image import generate_ticket_image
 
 
 @shared_task(name='apps.orders.tasks.expire_pending_orders')
@@ -34,7 +31,7 @@ def expire_pending_orders():
 @shared_task(name='apps.orders.tasks.send_purchase_confirmation', bind=True, max_retries=3)
 def send_purchase_confirmation(self, order_id):
     """
-    Envía el email de confirmación de compra con los QRs embebidos y adjuntos.
+    Envía el email de confirmación de compra con las entradas en PDF adjuntas.
     """
     try:
         order = Order.objects.select_related(
@@ -69,32 +66,26 @@ def send_purchase_confirmation(self, order_id):
     )
     msg.attach_alternative(html_body, 'text/html')
 
-    # --- Adjuntar QRs como imágenes inline (CID) + adjuntos ---
+    # --- Generar y adjuntar PDF de cada ticket ---
     for ticket in tickets:
-        img = qrcode.make(ticket.qr_code)
-        buf = io.BytesIO()
-        img.save(buf, format='PNG')
-        img_bytes = buf.getvalue()
+        try:
+            # generamos la imagen completa en PDF
+            pdf_bytes = generate_ticket_image(ticket)
 
-        # Inline (referenciada desde el HTML con cid:qr_<ticket.id>)
-        mime_img = MIMEImage(img_bytes, _subtype='png')
-        mime_img.add_header('Content-ID', f'<qr_{ticket.id}>')
-        mime_img.add_header(
-            'Content-Disposition', 'inline',
-            filename=f'qr_{ticket.id}.png',
-        )
-        msg.attach(mime_img)
-
-        # Adjunto descargable
-        mime_img_attach = MIMEImage(img_bytes, _subtype='png')
-        mime_img_attach.add_header(
-            'Content-Disposition', 'attachment',
-            filename=f'ticket_{ticket.id}.png',
-        )
-        msg.attach(mime_img_attach)
-
+            # adjuntamos el PDF al email
+            mime_pdf = MIMEApplication(pdf_bytes, _subtype='pdf')
+            mime_pdf.add_header(
+                'Content-Disposition',
+                'attachment',
+                'inline', # borrar si no funciona
+                filename=f'entrada-{str(ticket.id)[:8]}.pdf',
+            )        
+            msg.attach(mime_pdf)
+        except Exception as e:
+            print(f'[EMAIL] Error generando PDF para ticket {ticket.id}: {e}')
+    
     try:
         msg.send()
-        return f"Email enviado a {order.user.email} (orden {order.id})."
+        return f"Email enviado a {order.user.email} (orden {order.id}) con {len(tickets)} PDFs."
     except Exception as exc:
         raise self.retry(exc=exc, countdown=60)
