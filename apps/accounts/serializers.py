@@ -92,3 +92,13 @@ class RegisterProducerSerializer(RegisterSerializer):
         user.is_producer = True
         user.save(update_fields=['is_producer'])
         return user
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            'id', 'username', 'email', 'first_name', 'last_name', 
+            'is_producer', 'is_pos_operator', 'is_staff', 'phone', 'document_number', 'date_joined'
+        )
+        read_only_fields = ('id', 'username', 'date_joined')
