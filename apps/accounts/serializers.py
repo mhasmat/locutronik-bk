@@ -26,8 +26,10 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         fields = ('first_name', 'last_name', 'email', 'phone', 'document_number')
 
     def validate_email(self, value):
-        # Validar que el nuevo email no esté en uso por otro usuario
-        if User.objects.filter(email=value).exclude(id=self.instance.id).exists():
+        if not value:
+            return value
+        # Validar que el nuevo email no esté en uso por otro usuario (ignorando mayúsculas)
+        if User.objects.filter(email__iexact=value).exclude(id=self.instance.id).exists():
             raise serializers.ValidationError("Este email ya está registrado por otro usuario.")
         return value
 
