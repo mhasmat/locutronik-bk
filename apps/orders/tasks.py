@@ -1,4 +1,5 @@
 import io
+import qrcode
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 from celery import shared_task
@@ -6,7 +7,6 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
-from django.db.models import F
 from .models import Order
 from .services import cancel_order
 from .ticket_image import generate_ticket_image
@@ -49,11 +49,30 @@ def send_purchase_confirmation(self, order_id):
 
     tickets = list(order.tickets.all())
 
+    # Pre-procesamos los tickets para pasarle datos simples al template
+    tickets_data = []
+    for t in tickets:
+        tickets_data.append({
+            'id': t.id,
+            'qr_code': t.qr_code,
+            'ticket_type_name': t.ticket_type.name if t.ticket_type else 'Entrada',
+        })
+
+    # Armamos un contexto "aplanado" con textos ya formateados
     ctx = {
-        'order': order,
-        'event': order.event,
+        'order_id': str(order.id),
+        'event_name': order.event.name,
+        'event_date': order.event.start_time.strftime('%d/%m/%Y · %H:%M hs') if order.event.start_time else '',
+        'venue_name': order.event.venue.name if order.event.venue else '',
+        'venue_address': order.event.venue.address if order.event.venue else '',
+        'venue_city': order.event.venue.city if order.event.venue and order.event.venue.city else '',
         'buyer_name': order.user.get_full_name() or order.user.username,
-        'tickets': tickets,
+        'paid_at_formatted': order.paid_at.strftime('%d/%m/%Y %H:%M') if order.paid_at else '',
+        'items_snapshot': order.items_snapshot,
+        'subtotal': order.subtotal,
+        'platform_fee': order.platform_fee,
+        'total_amount': order.total_amount,
+        'tickets': tickets_data,
     }
     
     subject = f"Tus entradas para {order.event.name}"
@@ -83,7 +102,6 @@ def send_purchase_confirmation(self, order_id):
             msg.attach(mime_pdf)
 
             # 3. Generamos una versión en PNG solo del QR para embeber en el HTML
-            import qrcode
             img_qr = qrcode.make(ticket.qr_code)
             buf = io.BytesIO()
             img_qr.save(buf, format='PNG')

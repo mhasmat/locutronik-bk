@@ -51,14 +51,14 @@
             <tr>
               <td style="padding: 30px 40px 10px">
                 <h2 style="margin: 0 0 12px; font-size: 20px; color: #222">
-                  {{ event.name }}
+                  {{ event_name }}
                 </h2>
                 <p style="margin: 0 0 4px; font-size: 14px; color: #555">
-                  📅 {{ event.start_time|date:"l d/m/Y · H:i" }}
+                  📅 {{ event_date }}
                 </p>
                 <p style="margin: 0; font-size: 14px; color: #555">
-                  📍 {{ event.venue.name }} — {{ event.venue.address }}, {{
-                  event.venue.city }}
+                  📍 {{ venue_name }} — {{ venue_address }}{% if venue_city %},
+                  {{ venue_city }}{% endif %}
                 </p>
               </td>
             </tr>
@@ -76,9 +76,9 @@
                   Resumen de tu orden
                 </h3>
                 <p style="margin: 0 0 12px; font-size: 13px; color: #888">
-                  Orden #{{ order.id }}<br />Fecha: {{ order.paid_at|date:"d/m/Y
-                  H:i" }}
+                  Orden #{{ order_id }}<br />Fecha: {{ paid_at_formatted }}
                 </p>
+
                 <table
                   role="presentation"
                   width="100%"
@@ -87,7 +87,7 @@
                   border="0"
                   style="font-size: 14px"
                 >
-                  {% for item in order.items_snapshot %}
+                  {% for item in items_snapshot %}
                   <tr>
                     <td style="padding: 6px 0; color: #555">
                       {{ item.quantity }}x {{ item.ticket_type_name }}
@@ -115,7 +115,7 @@
                         border-top: 1px solid #eee;
                       "
                     >
-                      ${{ order.subtotal }}
+                      ${{ subtotal }}
                     </td>
                   </tr>
                   <tr>
@@ -123,7 +123,7 @@
                       Cargo por servicio
                     </td>
                     <td align="right" style="padding: 6px 0; color: #888">
-                      ${{ order.platform_fee }}
+                      ${{ platform_fee }}
                     </td>
                   </tr>
                   <tr>
@@ -147,7 +147,7 @@
                         border-top: 2px solid #222;
                       "
                     >
-                      ${{ order.total_amount }}
+                      ${{ total_amount }}
                     </td>
                   </tr>
                 </table>
@@ -166,6 +166,7 @@
                 >
                   Tus entradas
                 </h3>
+
                 {% for ticket in tickets %}
                 <table
                   role="presentation"
@@ -190,7 +191,7 @@
                         "
                       >
                         Ticket {{ forloop.counter }} · {{
-                        ticket.ticket_type.name }}
+                        ticket.ticket_type_name }}
                       </p>
                       <p style="margin: 0 0 12px; font-size: 12px; color: #888">
                         Código: {{ ticket.id }}
