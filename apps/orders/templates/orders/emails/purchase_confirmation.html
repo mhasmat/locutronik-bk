@@ -36,7 +36,6 @@
               box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             "
           >
-            <!-- Header -->
             <tr>
               <td
                 style="background: #6a4cf6; color: #ffffff; padding: 30px 40px"
@@ -49,8 +48,6 @@
                 </p>
               </td>
             </tr>
-
-            <!-- Event info -->
             <tr>
               <td style="padding: 30px 40px 10px">
                 <h2 style="margin: 0 0 12px; font-size: 20px; color: #222">
@@ -60,12 +57,11 @@
                   📅 {{ event.start_time|date:"l d/m/Y · H:i" }}
                 </p>
                 <p style="margin: 0; font-size: 14px; color: #555">
-                  📍 {{ event.venue.name }} — {{ event.venue.address }}
+                  📍 {{ event.venue.name }} — {{ event.venue.address }}, {{
+                  event.venue.city }}
                 </p>
               </td>
             </tr>
-
-            <!-- Order summary -->
             <tr>
               <td style="padding: 20px 40px 0">
                 <h3
@@ -80,10 +76,9 @@
                   Resumen de tu orden
                 </h3>
                 <p style="margin: 0 0 12px; font-size: 13px; color: #888">
-                  Orden #{{ order.id }}<br />
-                  Fecha: {{ order.paid_at|date:"d/m/Y H:i" }}
+                  Orden #{{ order.id }}<br />Fecha: {{ order.paid_at|date:"d/m/Y
+                  H:i" }}
                 </p>
-
                 <table
                   role="presentation"
                   width="100%"
@@ -158,8 +153,6 @@
                 </table>
               </td>
             </tr>
-
-            <!-- Tickets -->
             <tr>
               <td style="padding: 30px 40px 0">
                 <h3
@@ -173,7 +166,6 @@
                 >
                   Tus entradas
                 </h3>
-
                 {% for ticket in tickets %}
                 <table
                   role="presentation"
@@ -216,8 +208,6 @@
                 {% endfor %}
               </td>
             </tr>
-
-            <!-- Footer -->
             <tr>
               <td
                 style="

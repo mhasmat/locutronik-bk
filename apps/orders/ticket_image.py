@@ -125,18 +125,18 @@ def generate_ticket_image(ticket):
     _draw_centered_text(draw, f"🎫  {ticket.ticket_type.name}", 200, font_subtitle, BRAND_WHITE)
 
     # --- Sección de datos ---
-    y = header_height + 50
+    y = header_height + 40
 
     date_str = event.start_time.strftime('%d/%m/%Y · %H:%M hs')
     _draw_left_text(draw, 'FECHA Y HORA', 60, y, font_label, BRAND_GRAY)
     _draw_left_text(draw, date_str, 60, y + 35, font_value, BRAND_WHITE)
-    y += 120
+    y += 100
 
     _draw_left_text(draw, 'LUGAR', 60, y, font_label, BRAND_GRAY)
     _draw_left_text(draw, venue.name, 60, y + 35, font_value, BRAND_WHITE)
     if venue.address:
         _draw_left_text(draw, f"{venue.address}, {venue.city}", 60, y + 75, font_small, BRAND_GRAY)
-    y += 140
+    y += 120
 
     # --- QR ---
     qr = qrcode.QRCode(
@@ -149,7 +149,7 @@ def generate_ticket_image(ticket):
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
 
-    qr_size = 460
+    qr_size = 380
     qr_img = qr_img.resize((qr_size, qr_size), Image.LANCZOS)
     qr_bg_size = qr_size + 40
     qr_bg = Image.new('RGB', (qr_bg_size, qr_bg_size), BRAND_WHITE)
