@@ -19,6 +19,8 @@ from .services import create_order, cancel_order
 from django.contrib.auth import get_user_model
 from .services import create_order, confirm_order_payment
 from rest_framework.permissions import BasePermission
+from django.http import HttpResponse
+from .ticket_image import generate_thermal_ticket
 
 
 class OrderViewSet(viewsets.GenericViewSet,
@@ -235,3 +237,36 @@ class PosCreateOrderView(APIView):
             'order_id': str(order.id),
             'total': order.total_amount
         }, status=201)
+
+
+class OrderPrintView(APIView):
+    """
+    GET /api/orders/<order_id>/print/
+    Genera un PDF optimizado para impresora térmica de 80mm.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id)
+            
+            # 👇 Lógica de permisos mejorada
+            is_owner = (request.user == order.user)
+            is_organizer = (request.user == order.event.organizer)
+            is_pos_or_admin = (getattr(request.user, 'is_pos_operator', False) or getattr(request.user, 'is_staff', False))
+
+            if not (is_owner or is_organizer or is_pos_or_admin):
+                return Response({'detail': 'No autorizado para imprimir esta orden.'}, status=403)
+            
+            ticket = order.tickets.first()
+            if not ticket:
+                return Response({'detail': 'La orden no tiene tickets generados.'}, status=400)
+                
+            pdf_bytes = generate_thermal_ticket(ticket)
+            
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="ticket-{str(order.id)[:8]}.pdf"'
+            return response
+            
+        except Order.DoesNotExist:
+            return Response({'detail': 'Orden no encontrada.'}, status=404)
