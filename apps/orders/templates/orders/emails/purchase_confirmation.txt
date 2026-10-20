@@ -6,7 +6,7 @@ EVENTO
 ------
 {{ event.name }}
 Fecha: {{ event.start_time|date:"l d/m/Y H:i" }}
-Lugar: {{ event.venue.name }}, {{ event.venue.address }}, {{ event.venue.city }}
+Lugar: {{ event.venue.name }}, {{ event.venue.address }}
 
 RESUMEN DE TU ORDEN
 -------------------
@@ -22,16 +22,15 @@ TOTAL:       ${{ order.total_amount }}
 
 TUS ENTRADAS
 ------------
-{% for ticket in tickets %}Ticket {{ forloop.counter }}: {{ ticket.ticket_type_name }}
+{% for ticket in tickets %}Ticket {{ forloop.counter }}: {{ ticket.ticket_type.name }}
 Código QR: {{ ticket.qr_code }}
 Presentá este código en el ingreso al evento.
-{% if not forloop.last %}
-{% endif %}
+
 {% endfor %}
 
 Adjuntamos tus entradas en formato PDF listas para imprimir.
 
-También podés ver y descargar tus entradas desde tu cuenta en Locutronik.
+Podés ver y descargar tus entradas desde tu cuenta en Locutronik.
 
 ¡Que lo disfrutes!
 
