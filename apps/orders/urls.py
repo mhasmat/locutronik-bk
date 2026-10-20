@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import OrderViewSet, PosCreateOrderView, TicketValidateView, TicketQRView, TicketDownloadView, OrderPrintView
+from .views import OrderPrintView, OrderViewSet, PosCreateOrderView, TicketValidateView, TicketQRView, TicketDownloadView
 from apps.payments.views import CreateCheckoutView
 
 
