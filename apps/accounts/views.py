@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .serializers import (
-    UserSerializer, RegisterSerializer, RegisterProducerSerializer
+    ChangePasswordSerializer, UserSerializer, RegisterSerializer, RegisterProducerSerializer
 )
 
 
@@ -45,26 +45,23 @@ class RegisterProducerView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
 
 
-class MeView(APIView):
-    """Devuelve el usuario autenticado."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        return Response(UserSerializer(request.user).data)
-
 from rest_framework import generics
-from .serializers import UserSerializer, RegisterSerializer, RegisterProducerSerializer, UpdateProfileSerializer, ChangePasswordSerializer
+from .serializers import UserSerializer, UpdateProfileSerializer
 
-class UpdateProfileView(generics.UpdateAPIView):
+class ProfileView(generics.RetrieveUpdateAPIView):
     """
-    PATCH /api/auth/me/
-    Permite actualizar los datos del perfil del usuario autenticado.
+    GET /api/auth/me/ -> Ver perfil
+    PATCH /api/auth/me/ -> Actualizar perfil
     """
-    serializer_class = UpdateProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return UserSerializer
+        return UpdateProfileSerializer
 
 
 class ChangePasswordView(generics.GenericAPIView):
