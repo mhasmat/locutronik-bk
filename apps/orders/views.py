@@ -16,6 +16,10 @@ from .serializers import (
 )
 from .services import create_order, cancel_order
 
+from django.contrib.auth import get_user_model
+from .services import create_order, confirm_order_payment
+from rest_framework.permissions import BasePermission
+
 
 class OrderViewSet(viewsets.GenericViewSet,
                    viewsets.mixins.ListModelMixin,
@@ -175,3 +179,59 @@ class TicketDownloadView(APIView):
             return response
         except Exception as e:
             return Response({'detail': f'Error generando la entrada: {str(e)}'}, status=500)
+
+
+class IsPosOperator(BasePermission):
+    """Permiso personalizado para operadores de POS y Admins."""
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and 
+                    (request.user.is_pos_operator or request.user.is_staff))
+
+class PosCreateOrderView(APIView):
+    """
+    POST /api/orders/pos/
+    Crea una orden presencial pagada en el acto.
+    """
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        event_id = request.data.get('event_id')
+        items = request.data.get('items', [])
+        payment_method = request.data.get('payment_method', 'cash')
+        guest_email = request.data.get('guest_email', '')
+
+        if not event_id or not items:
+            return Response({'detail': 'Faltan datos del evento o los tickets.'}, status=400)
+
+        # 1. Buscamos o creamos el "Cliente Genérico POS"
+        User = get_user_model()
+        pos_user, _ = User.objects.get_or_create(
+            username='pos_cliente',
+            defaults={
+                'email': 'pos@locutronik.local',
+                'first_name': 'Cliente',
+                'last_name': 'Presencial',
+                'is_active': False
+            }
+        )
+
+        # 2. Creamos la orden usando tu servicio existente (esto reserva el stock)
+        order, error = create_order(pos_user, event_id, items)
+        if error:
+            return Response({'detail': error}, status=400)
+
+        # 3. La pagamos inmediatamente (genera los tickets)
+        order.created_by = request.user
+        order.payment_method = payment_method
+        if guest_email:
+            # Lo guardamos temporalmente en el snapshot o en el user genérico si querés
+            pass 
+        order.save()
+
+        confirm_order_payment(order, payment_provider=payment_method, payment_reference='POS-VENTA')
+
+        return Response({
+            'detail': 'Venta presencial exitosa.',
+            'order_id': str(order.id),
+            'total': order.total_amount
+        }, status=201)

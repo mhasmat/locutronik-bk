@@ -32,6 +32,20 @@ class Order(models.Model):
 
     email_sent = models.BooleanField(default=False)
 
+    # 👇 NUEVOS CAMPOS
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name='pos_orders',
+        help_text="Operador de POS que realizó la venta (null si fue online)"
+    )
+    payment_method = models.CharField(
+        max_length=20, 
+        default='mercadopago',
+        help_text="mercadopago, cash, transfer, etc."
+    )
+
     class Meta:
         ordering = ['-created_at']
 
