@@ -76,8 +76,13 @@ def send_purchase_confirmation(self, order_id):
     }
     
     subject = f"Tus entradas para {order.event.name}"
-    text_body = render_to_string('orders/emails/purchase_confirmation.txt', ctx)
-    html_body = render_to_string('orders/emails/purchase_confirmation.html', ctx)
+    from django.template.exceptions import TemplateSyntaxError
+    try:
+        text_body = render_to_string('orders/emails/purchase_confirmation.txt', ctx)
+        html_body = render_to_string('orders/emails/purchase_confirmation.html', ctx)
+    except TemplateSyntaxError as e:
+        print(f"🚨 ERROR DE SINTAXIS EN EL TEMPLATE: {e}")
+        return f"Error de sintaxis: {e}"
 
     msg = EmailMultiAlternatives(
         subject=subject,
