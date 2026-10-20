@@ -18,6 +18,37 @@ class UserSerializer(serializers.ModelSerializer):
         from .utils import format_phone_display
         return format_phone_display(obj.phone) if obj.phone else ''
 
+class UpdateProfileSerializer(serializers.ModelSerializer):
+    phone = serializers.CharField(required=False)
+
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'email', 'phone', 'document_number')
+
+    def validate_email(self, value):
+        # Validar que el nuevo email no esté en uso por otro usuario
+        if User.objects.filter(email=value).exclude(id=self.instance.id).exists():
+            raise serializers.ValidationError("Este email ya está registrado por otro usuario.")
+        return value
+
+    def validate_phone(self, value):
+        if value:
+            normalized = normalize_argentine_phone(value)
+            if not normalized:
+                raise serializers.ValidationError('El teléfono no es válido.')
+            return normalized
+        return value
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, min_length=8)
+
+    def validate_current_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError("La contraseña actual es incorrecta.")
+        return value
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True)

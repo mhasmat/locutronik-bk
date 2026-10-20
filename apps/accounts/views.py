@@ -51,3 +51,36 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+from rest_framework import generics
+from .serializers import UserSerializer, RegisterSerializer, RegisterProducerSerializer, UpdateProfileSerializer, ChangePasswordSerializer
+
+class UpdateProfileView(generics.UpdateAPIView):
+    """
+    PATCH /api/auth/me/
+    Permite actualizar los datos del perfil del usuario autenticado.
+    """
+    serializer_class = UpdateProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+class ChangePasswordView(generics.GenericAPIView):
+    """
+    POST /api/auth/change-password/
+    Permite cambiar la contraseña verificando la actual.
+    """
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+        
+        return Response({'detail': 'Contraseña actualizada correctamente.'}, status=status.HTTP_200_OK)
