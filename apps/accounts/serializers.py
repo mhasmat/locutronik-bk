@@ -45,6 +45,7 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(required=True, min_length=8)
 
     def validate_current_password(self, value):
+        # Verifica que la contraseña actual sea correcta
         if not self.context['request'].user.check_password(value):
             raise serializers.ValidationError("La contraseña actual es incorrecta.")
         return value
