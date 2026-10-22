@@ -307,21 +307,21 @@ class PosCashRegisterView(APIView):
             except ValueError:
                 return Response({'detail': 'Formato de fecha inválido.'}, status=400)
 
-        # Base de órdenes POS
+        # Base de órdenes POS (ventas presenciales)
         base_orders = Order.objects.filter(
             status='paid',
             created_by__isnull=False,
             paid_at__date=target_date
         )
 
-        # Totales generales (recaudación total del día)
+        # Totales generales
         totals = base_orders.aggregate(
             total_revenue=Sum('total_amount'),
             total_fee=Sum('platform_fee'),
             total_tickets=Count('tickets')
         )
 
-        # Totales de LO QUE FALTA LIQUIDAR
+        # Totales de LO QUE FALTA LIQUIDAR (solo órdenes no liquidadas)
         pending_orders = base_orders.filter(liquidated_at__isnull=True)
         pending_totals = pending_orders.aggregate(
             total_producer=Sum('subtotal')
@@ -339,10 +339,8 @@ class PosCashRegisterView(APIView):
             producer_amount=Sum('subtotal'),
             fee_amount=Sum('platform_fee'),
             tickets_sold=Count('tickets'),
-            pending_liquidation=Sum(
-                'subtotal', 
-                filter=Q(liquidated_at__isnull=True)
-            )
+            # Calculamos cuánto falta liquidar por evento
+            pending_liquidation=Sum('subtotal', filter=Q(liquidated_at__isnull=True))
         ).order_by('-gross_revenue')
 
         return Response({
