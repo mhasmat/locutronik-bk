@@ -44,12 +44,7 @@ class Order(models.Model):
         max_length=20, 
         default='mercadopago',
         help_text="mercadopago, cash, transfer, etc."
-    )
-
-    liquidated_at = models.DateTimeField(
-        null=True, blank=True,
-        help_text="Fecha en que el POS le rindió el dinero al productor."
-    )
+    )    
 
     class Meta:
         ordering = ['-created_at']
@@ -94,3 +89,51 @@ class Ticket(models.Model):
 
     def __str__(self):
         return f"Ticket {self.id} - {self.ticket_type.name}"
+
+# CAJA DIARIA
+class CashRegister(models.Model):
+    """Registro de Cierre de Caja Diario (Reporte Z)"""
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    operator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='cash_registers'
+    )
+    
+    expected_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    actual_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    difference = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"Cierre {self.closed_at.strftime('%d/%m/%Y') if self.closed_at else 'Abierto'} - {self.operator.username}"
+
+# RENDICIONES
+class Settlement(models.Model):
+    """Rendición de dinero a un productor"""
+    STATUS_CHOICES = [
+        ('partial', 'Parcial'),
+        ('final', 'Final'),
+    ]
+    
+    producer = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='settlements'
+    )
+    # 👇 Aquí vinculamos qué órdenes entran en esta rendición
+    orders = models.ManyToManyField(Order, related_name='settlements', blank=True)
+    
+    settlement_type = models.CharField(max_length=20, choices=STATUS_CHOICES, default='partial')
+    total_gross = models.DecimalField(max_digits=12, decimal_places=2, default=0) # Lo que recaudó
+    total_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0)   # Lo que se queda Locutronik
+    total_net = models.DecimalField(max_digits=12, decimal_places=2, default=0)    # Lo que se le paga al productor
+    
+    cash_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transfer_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='settlements_created'
+    )
+
+    def __str__(self):
+        return f"Rendición {self.id} a {self.producer.username} - ${self.total_net}"

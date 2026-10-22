@@ -12,7 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Order, Ticket
+from .models import Order, Ticket, CashRegister
 from .serializers import (
     OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer
 )
@@ -291,70 +291,78 @@ class OrderPrintView(APIView):
 
 
 class PosCashRegisterView(APIView):
-    """
-    GET /api/orders/pos/cash-register/?date=YYYY-MM-DD
-    Devuelve el resumen de ventas y arqueo de caja para una fecha.
-    """
+    """GET /api/orders/pos/cash-register/?date=YYYY-MM-DD -> Resumen Z"""
     permission_classes = [IsPosOperator]
 
     def get(self, request):
-        date_str = request.query_params.get('date')
-        if not date_str:
-            target_date = timezone.now().date()
-        else:
-            try:
-                target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-            except ValueError:
-                return Response({'detail': 'Formato de fecha inválido.'}, status=400)
+        date_str = request.query_params.get('date') or timezone.now().date().isoformat()
+        try:
+            target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Formato de fecha inválido.'}, status=400)
 
-        # Base de órdenes POS (ventas presenciales)
-        base_orders = Order.objects.filter(
-            status='paid',
-            created_by__isnull=False,
-            paid_at__date=target_date
-        )
+        # Órdenes POS del día
+        orders = Order.objects.filter(status='paid', created_by__isnull=False, paid_at__date=target_date)
 
-        # Totales generales
-        totals = base_orders.aggregate(
+        totals = orders.aggregate(
             total_revenue=Sum('total_amount'),
             total_fee=Sum('platform_fee'),
+            total_producer=Sum('subtotal'),
             total_tickets=Count('tickets')
         )
+        
+        cash_amount = orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))['amount'] or 0
+        transfer_amount = orders.filter(payment_method='transfer').aggregate(amount=Sum('total_amount'))['amount'] or 0
 
-        # Totales de LO QUE FALTA LIQUIDAR (solo órdenes no liquidadas)
-        pending_orders = base_orders.filter(liquidated_at__isnull=True)
-        pending_totals = pending_orders.aggregate(
-            total_producer=Sum('subtotal')
-        )
-
-        # Desglose por método de pago
-        cash_totals = base_orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))
-        transfer_totals = base_orders.filter(payment_method='transfer').aggregate(amount=Sum('total_amount'))
-
-        # Desglose por evento
-        events_breakdown = base_orders.values(
-            'event__id', 'event__name', 'event__organizer__username'
-        ).annotate(
-            gross_revenue=Sum('total_amount'),
-            producer_amount=Sum('subtotal'),
-            fee_amount=Sum('platform_fee'),
-            tickets_sold=Count('tickets'),
-            # Calculamos cuánto falta liquidar por evento
-            pending_liquidation=Sum('subtotal', filter=Q(liquidated_at__isnull=True))
-        ).order_by('-gross_revenue')
+        # ¿Ya existe un cierre para esta fecha?
+        existing_close = CashRegister.objects.filter(closed_at__date=target_date).first()
 
         return Response({
             'date': target_date,
             'summary': {
                 'total_revenue': totals['total_revenue'] or 0,
                 'total_fee': totals['total_fee'] or 0,
-                'total_producer_pending': pending_totals['total_producer'] or 0,
+                'total_producer': totals['total_producer'] or 0,
                 'total_tickets': totals['total_tickets'] or 0,
-                'cash_amount': cash_totals['amount'] or 0,
-                'transfer_amount': transfer_totals['amount'] or 0,
+                'cash_amount': cash_amount,
+                'transfer_amount': transfer_amount,
             },
-            'events_breakdown': list(events_breakdown)
+            'is_closed': bool(existing_close),
+            'closed_details': existing_close.notes if existing_close else None,
         })
+
+class PosCloseCashRegisterView(APIView):
+    """POST /api/orders/pos/cash-register/close/"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        date_str = request.data.get('date')
+        actual_cash = float(request.data.get('actual_cash', 0))
+        notes = request.data.get('notes', '')
+
+        try:
+            target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return Response({'detail': 'Fecha inválida.'}, status=400)
+            
+        if CashRegister.objects.filter(closed_at__date=target_date).exists():
+             return Response({'detail': 'Esta caja ya fue cerrada.'}, status=400)
+
+        orders = Order.objects.filter(status='paid', created_by__isnull=False, paid_at__date=target_date)
+        expected_cash = orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))['amount'] or 0
+
+        diff = actual_cash - float(expected_cash)
+
+        register = CashRegister.objects.create(
+            operator=request.user,
+            closed_at=timezone.now(),
+            expected_cash=expected_cash,
+            actual_cash=actual_cash,
+            difference=diff,
+            notes=notes
+        )
+
+        return Response({'detail': 'Caja cerrada correctamente.', 'difference': diff})
 
 class PosLiquidateEventView(APIView):
     """
