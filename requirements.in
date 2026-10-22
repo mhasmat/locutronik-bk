@@ -36,3 +36,6 @@ celery
 # Producción
 gunicorn
 whitenoise
+
+# PDF
+reportlab

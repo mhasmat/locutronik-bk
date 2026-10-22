@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import AdminCreateSettlementView, AdminPendingSettlementsView, AdminProducerPendingOrdersView, OrderPrintView, OrderViewSet, PosCashRegisterView, PosCloseCashRegisterView, PosCreateOrderView, PosLiquidateEventView, PosOrderSearchView, TicketValidateView, TicketQRView, TicketDownloadView
+from .views import AdminCreateSettlementView, AdminPendingSettlementsView, AdminProducerPendingOrdersView, AdminSettlementHistoryView, AdminSettlementPDFView, OrderPrintView, OrderViewSet, PosCashRegisterView, PosCloseCashRegisterView, PosCreateOrderView, PosLiquidateEventView, PosOrderSearchView, TicketValidateView, TicketQRView, TicketDownloadView
 from apps.payments.views import CreateCheckoutView
 
 
@@ -26,5 +26,7 @@ urlpatterns = [
     path('admin/settlements/pending/', AdminPendingSettlementsView.as_view(), name='admin-pending-settlements'),
     path('admin/settlements/pending/<int:producer_id>/', AdminProducerPendingOrdersView.as_view(), name='admin-producer-pending-orders'),
     path('admin/settlements/create/', AdminCreateSettlementView.as_view(), name='admin-create-settlement'),
+    path('admin/settlements/<int:settlement_id>/pdf/', AdminSettlementPDFView.as_view(), name='admin-settlement-pdf'),
+    path('admin/settlements/history/', AdminSettlementHistoryView.as_view(), name='admin-settlement-history'),
 
 ] + router.urls

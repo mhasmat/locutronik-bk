@@ -7,14 +7,14 @@ from django.http import HttpResponse
 from .ticket_image import generate_ticket_image
 from django.utils import timezone
 
-from rest_framework import viewsets, permissions, status
+from rest_framework import generics, viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Order, Ticket, CashRegister, Settlement
 from .serializers import (
-    OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer, PendingOrderSerializer
+    OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer, PendingOrderSerializer, SettlementListSerializer
 )
 from .services import create_order, cancel_order
 
@@ -23,6 +23,7 @@ from .services import create_order, confirm_order_payment
 from rest_framework.permissions import BasePermission
 from django.http import HttpResponse
 from .ticket_image import generate_thermal_ticket
+from .settlement_pdf import generate_settlement_pdf
 
 
 class OrderViewSet(viewsets.GenericViewSet,
@@ -499,3 +500,31 @@ class AdminCreateSettlementView(APIView):
             settlement.orders.set(orders)
             
         return Response({'detail': 'Rendición generada con éxito.', 'settlement_id': settlement.id})
+
+
+class AdminSettlementPDFView(APIView):
+    """
+    GET /api/orders/admin/settlements/<settlement_id>/pdf/
+    Descarga el comprobante en PDF.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, settlement_id):
+        try:
+            settlement = Settlement.objects.get(id=settlement_id)
+        except Settlement.DoesNotExist:
+            return Response({'detail': 'Rendición no encontrada.'}, status=404)
+
+        try:
+            pdf_bytes = generate_settlement_pdf(settlement)
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="rendicion-{settlement.id}.pdf"'
+            return response
+        except Exception as e:
+            return Response({'detail': f'Error generando el PDF: {str(e)}'}, status=500)
+
+class AdminSettlementHistoryView(generics.ListAPIView):
+    """GET /api/orders/admin/settlements/history/"""
+    permission_classes = [permissions.IsAdminUser]
+    queryset = Settlement.objects.all().order_by('-created_at')
+    serializer_class = SettlementListSerializer
