@@ -305,35 +305,44 @@ class PosCashRegisterView(APIView):
             try:
                 target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
             except ValueError:
-                return Response({'detail': 'Formato de fecha inválido. Usá YYYY-MM-DD.'}, status=400)
+                return Response({'detail': 'Formato de fecha inválido.'}, status=400)
 
-        # Filtramos las órdenes pagadas que fueron creadas por el POS (created_by no es nulo)
-        orders = Order.objects.filter(
+        # Base de órdenes POS
+        base_orders = Order.objects.filter(
             status='paid',
             created_by__isnull=False,
             paid_at__date=target_date
         )
 
-        # Totales generales
-        totals = orders.aggregate(
+        # Totales generales (recaudación total del día)
+        totals = base_orders.aggregate(
             total_revenue=Sum('total_amount'),
             total_fee=Sum('platform_fee'),
-            total_producer=Sum('subtotal'),
             total_tickets=Count('tickets')
         )
 
-        # Desglose por método de pago
-        cash_totals = orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))
-        transfer_totals = orders.filter(payment_method='transfer').aggregate(amount=Sum('total_amount'))
+        # Totales de LO QUE FALTA LIQUIDAR
+        pending_orders = base_orders.filter(liquidated_at__isnull=True)
+        pending_totals = pending_orders.aggregate(
+            total_producer=Sum('subtotal')
+        )
 
-        # Desglose por evento (para saber cuánto liquidarle a cada productor)
-        events_breakdown = orders.values(
+        # Desglose por método de pago
+        cash_totals = base_orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))
+        transfer_totals = base_orders.filter(payment_method='transfer').aggregate(amount=Sum('total_amount'))
+
+        # Desglose por evento
+        events_breakdown = base_orders.values(
             'event__id', 'event__name', 'event__organizer__username'
         ).annotate(
             gross_revenue=Sum('total_amount'),
             producer_amount=Sum('subtotal'),
             fee_amount=Sum('platform_fee'),
-            tickets_sold=Count('tickets')
+            tickets_sold=Count('tickets'),
+            pending_liquidation=Sum(
+                'subtotal', 
+                filter=Q(liquidated_at__isnull=True)
+            )
         ).order_by('-gross_revenue')
 
         return Response({
@@ -341,10 +350,50 @@ class PosCashRegisterView(APIView):
             'summary': {
                 'total_revenue': totals['total_revenue'] or 0,
                 'total_fee': totals['total_fee'] or 0,
-                'total_producer': totals['total_producer'] or 0,
+                'total_producer_pending': pending_totals['total_producer'] or 0,
                 'total_tickets': totals['total_tickets'] or 0,
                 'cash_amount': cash_totals['amount'] or 0,
                 'transfer_amount': transfer_totals['amount'] or 0,
             },
             'events_breakdown': list(events_breakdown)
         })
+
+class PosLiquidateEventView(APIView):
+    """
+    POST /api/orders/pos/liquidate/
+    Marca todas las órdenes de un evento en una fecha específica como liquidadas.
+    """
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        event_id = request.data.get('event_id')
+        date_str = request.data.get('date')
+
+        if not event_id or not date_str:
+            return Response({'detail': 'Faltan datos (event_id y date).'}, status=400)
+
+        try:
+            target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Formato de fecha inválido.'}, status=400)
+
+        # Buscamos las órdenes vendidas por el POS para ese evento y fecha, que NO estén liquidadas
+        orders = Order.objects.filter(
+            status='paid',
+            created_by__isnull=False,
+            event_id=event_id,
+            paid_at__date=target_date,
+            liquidated_at__isnull=True
+        )
+
+        count = orders.count()
+        if count == 0:
+            return Response({'detail': 'No hay órdenes pendientes de liquidar para este evento en esta fecha.'}, status=400)
+
+        # Las marcamos como liquidadas
+        orders.update(liquidated_at=timezone.now())
+
+        return Response({
+            'detail': f'{count} órdenes liquidadas correctamente.',
+            'event_id': event_id
+        }, status=200)

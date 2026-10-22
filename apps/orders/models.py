@@ -46,6 +46,11 @@ class Order(models.Model):
         help_text="mercadopago, cash, transfer, etc."
     )
 
+    liquidated_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Fecha en que el POS le rindió el dinero al productor."
+    )
+
     class Meta:
         ordering = ['-created_at']
 
