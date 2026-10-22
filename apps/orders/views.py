@@ -1,7 +1,8 @@
 import io
 import qrcode
+import datetime
 
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from django.http import HttpResponse
 from .ticket_image import generate_ticket_image
 from django.utils import timezone
@@ -287,3 +288,63 @@ class OrderPrintView(APIView):
             
         except Order.DoesNotExist:
             return Response({'detail': 'Orden no encontrada.'}, status=404)
+
+
+class PosCashRegisterView(APIView):
+    """
+    GET /api/orders/pos/cash-register/?date=YYYY-MM-DD
+    Devuelve el resumen de ventas y arqueo de caja para una fecha.
+    """
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        date_str = request.query_params.get('date')
+        if not date_str:
+            target_date = timezone.now().date()
+        else:
+            try:
+                target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'detail': 'Formato de fecha inválido. Usá YYYY-MM-DD.'}, status=400)
+
+        # Filtramos las órdenes pagadas que fueron creadas por el POS (created_by no es nulo)
+        orders = Order.objects.filter(
+            status='paid',
+            created_by__isnull=False,
+            paid_at__date=target_date
+        )
+
+        # Totales generales
+        totals = orders.aggregate(
+            total_revenue=Sum('total_amount'),
+            total_fee=Sum('platform_fee'),
+            total_producer=Sum('subtotal'),
+            total_tickets=Count('tickets')
+        )
+
+        # Desglose por método de pago
+        cash_totals = orders.filter(payment_method='cash').aggregate(amount=Sum('total_amount'))
+        transfer_totals = orders.filter(payment_method='transfer').aggregate(amount=Sum('total_amount'))
+
+        # Desglose por evento (para saber cuánto liquidarle a cada productor)
+        events_breakdown = orders.values(
+            'event__id', 'event__name', 'event__organizer__username'
+        ).annotate(
+            gross_revenue=Sum('total_amount'),
+            producer_amount=Sum('subtotal'),
+            fee_amount=Sum('platform_fee'),
+            tickets_sold=Count('tickets')
+        ).order_by('-gross_revenue')
+
+        return Response({
+            'date': target_date,
+            'summary': {
+                'total_revenue': totals['total_revenue'] or 0,
+                'total_fee': totals['total_fee'] or 0,
+                'total_producer': totals['total_producer'] or 0,
+                'total_tickets': totals['total_tickets'] or 0,
+                'cash_amount': cash_totals['amount'] or 0,
+                'transfer_amount': transfer_totals['amount'] or 0,
+            },
+            'events_breakdown': list(events_breakdown)
+        })
