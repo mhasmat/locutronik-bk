@@ -12,9 +12,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Order, Ticket, CashRegister
+from .models import Order, Ticket, CashRegister, Settlement
 from .serializers import (
-    OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer
+    OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer, PendingOrderSerializer
 )
 from .services import create_order, cancel_order
 
@@ -403,3 +403,99 @@ class PosLiquidateEventView(APIView):
             'detail': f'{count} órdenes liquidadas correctamente.',
             'event_id': event_id
         }, status=200)
+
+class AdminPendingSettlementsView(APIView):
+    """
+    GET /api/orders/admin/settlements/pending/
+    Agrupa las ventas no rendidas por productor.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        # Órdenes pagadas que NO pertenecen a ninguna rendición aún
+        pending_orders = Order.objects.filter(
+            status='paid',
+            settlements__isnull=True
+        )
+        
+        # Agrupamos por el organizador del evento (Productor)
+        producers = pending_orders.values(
+            'event__organizer__id', 
+            'event__organizer__username',
+            'event__organizer__first_name',
+            'event__organizer__last_name'
+        ).annotate(
+            total_net=Sum('subtotal'),
+            total_fee=Sum('platform_fee'),
+            total_orders=Count('id')
+        ).order_by('-total_net')
+        
+        return Response(list(producers))
+
+
+class AdminProducerPendingOrdersView(APIView):
+    """
+    GET /api/orders/admin/settlements/pending/<producer_id>/
+    Detalle de las órdenes pendientes de un productor específico.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, producer_id):
+        orders = Order.objects.filter(
+            status='paid',
+            event__organizer_id=producer_id,
+            settlements__isnull=True
+        ).order_by('paid_at')
+        
+        serializer = PendingOrderSerializer(orders, many=True)
+        return Response(serializer.data)
+
+
+class AdminCreateSettlementView(APIView):
+    """
+    POST /api/orders/admin/settlements/create/
+    Genera la rendición agrupando todas las órdenes pendientes.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request):
+        producer_id = request.data.get('producer_id')
+        settlement_type = request.data.get('settlement_type', 'partial')
+        
+        if not producer_id:
+            return Response({'detail': 'Falta el ID del productor.'}, status=400)
+            
+        orders = Order.objects.filter(
+            status='paid',
+            event__organizer_id=producer_id,
+            settlements__isnull=True
+        )
+        
+        if not orders.exists():
+            return Response({'detail': 'No hay órdenes pendientes para este productor.'}, status=400)
+            
+        # Calculamos todos los totales
+        totals = orders.aggregate(
+            gross=Sum('total_amount'),
+            fee=Sum('platform_fee'),
+            net=Sum('subtotal'),
+            cash=Sum('total_amount', filter=Q(payment_method='cash')),
+            transfer=Sum('total_amount', filter=Q(payment_method='transfer'))
+        )
+        
+        from django.db import transaction
+        
+        with transaction.atomic():
+            settlement = Settlement.objects.create(
+                producer_id=producer_id,
+                settlement_type=settlement_type,
+                total_gross=totals['gross'] or 0,
+                total_fee=totals['fee'] or 0,
+                total_net=totals['net'] or 0,
+                cash_amount=totals['cash'] or 0,
+                transfer_amount=totals['transfer'] or 0,
+                created_by=request.user
+            )
+            settlement.orders.set(orders)
+            
+        return Response({'detail': 'Rendición generada con éxito.', 'settlement_id': settlement.id})

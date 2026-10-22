@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Order, Ticket
+from .models import Order, Ticket, Settlement
 
 
 class OrderItemInputSerializer(serializers.Serializer):
@@ -48,3 +48,24 @@ class OrderListSerializer(serializers.ModelSerializer):
         model = Order
         fields = ('id', 'event', 'event_name', 'total_amount',
                   'status', 'created_at', 'expires_at')
+
+class PendingOrderSerializer(serializers.ModelSerializer):
+    event_name = serializers.CharField(source='event.name', read_only=True)
+    class Meta:
+        model = Order
+        fields = (
+            'id', 'event_name', 'subtotal', 'platform_fee', 'total_amount',
+            'payment_method', 'paid_at', 'payment_provider'
+        )
+
+class SettlementListSerializer(serializers.ModelSerializer):
+    producer_username = serializers.CharField(source='producer.username', read_only=True)
+    
+    class Meta:
+        model = Settlement
+        fields = (
+            'id', 'producer', 'producer_username', 'settlement_type',
+            'total_gross', 'total_fee', 'total_net',
+            'cash_amount', 'transfer_amount',
+            'created_at'
+        )
