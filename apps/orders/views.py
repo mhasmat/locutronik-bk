@@ -1,6 +1,7 @@
 import io
 import qrcode
 
+from django.db.models import Q
 from django.http import HttpResponse
 from .ticket_image import generate_ticket_image
 from django.utils import timezone
@@ -238,6 +239,22 @@ class PosCreateOrderView(APIView):
             'total': order.total_amount
         }, status=201)
 
+class PosOrderSearchView(APIView):
+    """GET /api/orders/search/?q=..."""
+    permission_classes = [IsPosOperator] # El permiso que creamos antes
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response([])
+
+        # Buscamos por ID exacto o por email del comprador
+        orders = Order.objects.filter(
+            Q(id__icontains=query) | Q(user__email__icontains=query)
+        ).filter(status='paid').order_by('-paid_at')[:10] # Traemos las últimas 10
+
+        serializer = OrderDetailSerializer(orders, many=True)
+        return Response(serializer.data)
 
 class OrderPrintView(APIView):
     """

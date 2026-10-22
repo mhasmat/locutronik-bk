@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import OrderPrintView, OrderViewSet, PosCreateOrderView, TicketValidateView, TicketQRView, TicketDownloadView
+from .views import OrderPrintView, OrderViewSet, PosCreateOrderView, PosOrderSearchView, TicketValidateView, TicketQRView, TicketDownloadView
 from apps.payments.views import CreateCheckoutView
 
 
@@ -18,5 +18,6 @@ urlpatterns = [
     
     path('pos/', PosCreateOrderView.as_view(), name='pos-create-order'),
     path('<uuid:order_id>/print/', OrderPrintView.as_view(), name='order-print'),
+    path('search/', PosOrderSearchView.as_view(), name='pos-search'),
 
 ] + router.urls
