@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Venue, Event, TicketType
+from .models import Venue, Event, TicketType, PlatformConfig
 
 
 @admin.register(Venue)
@@ -15,7 +15,8 @@ class TicketTypeInline(admin.TabularInline):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('name', 'organizer', 'start_time', 'status', 'platform_fee_percent')
+    # 👇 Quitamos platform_fee_percent de la lista
+    list_display = ('name', 'organizer', 'start_time', 'status')
     list_filter = ('status', 'start_time')
     search_fields = ('name', 'organizer__username')
     inlines = [TicketTypeInline]
@@ -25,3 +26,22 @@ class EventAdmin(admin.ModelAdmin):
 class TicketTypeAdmin(admin.ModelAdmin):
     list_display = ('event', 'name', 'price', 'quantity_total', 'quantity_available')
     list_filter = ('event',)
+
+
+@admin.register(PlatformConfig)
+class PlatformConfigAdmin(admin.ModelAdmin):
+    """
+    Configuración global de la plataforma.
+    Solo debería haber un registro (ID=1) que se edita, no se crean nuevos.
+    """
+    list_display = ('fee_type', 'fee_value', 'mp_locutronik_account')
+
+    def has_add_permission(self, request):
+        # Bloquea el botón de "Agregar" si ya existe un registro
+        if PlatformConfig.objects.exists():
+            return False
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        # Bloquea el botón de "Eliminar" para no romper el sistema
+        return False
