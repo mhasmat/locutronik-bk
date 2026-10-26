@@ -24,7 +24,6 @@ class TicketTypeSerializer(serializers.ModelSerializer):
 
 
 class EventListSerializer(serializers.ModelSerializer):
-    """Serializer liviano para listados."""
     venue = VenueSerializer(read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
     min_price = serializers.SerializerMethodField()
@@ -34,6 +33,7 @@ class EventListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'image', 'start_time', 'end_time',
             'status', 'venue', 'organizer_username', 'min_price',
+            'fee_type', 'fee_value', # 👈
         )
 
     def get_min_price(self, obj):
@@ -42,12 +42,9 @@ class EventListSerializer(serializers.ModelSerializer):
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
-    """Serializer completo, con tipos de ticket anidados."""
     venue = VenueSerializer()
     ticket_types = TicketTypeSerializer(many=True, read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
-    # 👇 Leemos la comisión global en lugar del campo del modelo
-    platform_fee_percent = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -55,28 +52,11 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'image',
             'venue', 'ticket_types',
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
-            'status', 'platform_fee_percent',
+            'status', 'fee_type', 'fee_value', # 👈
             'organizer', 'organizer_username',
             'created_at', 'updated_at',
         )
         read_only_fields = ('organizer', 'created_at', 'updated_at')
-
-    def get_platform_fee_percent(self, obj):
-        # Buscamos la configuración global (o creamos una por defecto)
-        config = PlatformConfig.objects.first()
-        if not config:
-            config = PlatformConfig.objects.create(fee_type='percentage', fee_value=8.00)
-        
-        # Si el fee es fijo, calculamos el porcentaje equivalente basado en el precio del primer ticket
-        # O simplemente devolvemos el valor si es porcentaje.
-        if config.fee_type == 'percentage':
-            return str(config.fee_value)
-        else:
-            # Si es un monto fijo, calculamos un porcentaje estimado para el frontend
-            tt = obj.ticket_types.filter(is_active=True).order_by('price').first()
-            if tt and tt.price > 0:
-                return str((config.fee_value / tt.price) * 100)
-            return "0.00"
 
 
 class TicketTypeInputSerializer(serializers.ModelSerializer):
@@ -99,7 +79,8 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'description', 'image', 'venue',
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
-            'status', 'ticket_types', # 👈 Ya no se pide platform_fee_percent
+            'status', 'ticket_types',
+            'fee_type', 'fee_value', # 👈
         )
 
     def to_internal_value(self, data):
@@ -146,9 +127,7 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         ticket_types = attrs.get('ticket_types', [])
         names = [tt.get('name', '').strip().lower() for tt in ticket_types if tt.get('name')]
         if len(names) != len(set(names)):
-            raise serializers.ValidationError({
-                'ticket_types': 'No puede haber dos tipos de entrada con el mismo nombre.'
-            })
+            raise serializers.ValidationError({'ticket_types': 'No puede haber dos tipos de entrada con el mismo nombre.'})
 
         return attrs
 
@@ -181,15 +160,11 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             name = tt_data.get('name', '').strip()
 
             if name.lower() in seen_names:
-                raise serializers.ValidationError({
-                    'ticket_types': f'El nombre "{name}" está repetido.'
-                })
+                raise serializers.ValidationError({'ticket_types': f'El nombre "{name}" está repetido.'})
             seen_names.add(name.lower())
 
             if tt_id and tt_id not in existing:
-                raise serializers.ValidationError({
-                    'ticket_types': f'El ticket type con id={tt_id} no pertenece a este evento.'
-                })
+                raise serializers.ValidationError({'ticket_types': f'El ticket type con id={tt_id} no pertenece a este evento.'})
 
             if tt_id:
                 tt = existing[tt_id]

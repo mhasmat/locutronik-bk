@@ -16,8 +16,8 @@ class TicketTypeInline(admin.TabularInline):
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     # 👇 Quitamos platform_fee_percent de la lista
-    list_display = ('name', 'organizer', 'start_time', 'status')
-    list_filter = ('status', 'start_time')
+    list_display = ('name', 'organizer', 'start_time', 'status', 'fee_type', 'fee_value')
+    list_filter = ('status', 'start_time', 'fee_type')
     search_fields = ('name', 'organizer__username')
     inlines = [TicketTypeInline]
 
