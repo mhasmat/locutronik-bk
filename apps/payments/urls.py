@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    CreateCheckoutView, MercadoPagoWebhookView, checkout_result_view
+    CreateCheckoutView, MPOAuthCallbackView, MPOAuthUrlView, MercadoPagoWebhookView, checkout_result_view
 )
 
 urlpatterns = [
@@ -10,4 +10,7 @@ urlpatterns = [
     path('checkout/success/', lambda r: checkout_result_view(r, 'success'), name='checkout-success'),
     path('checkout/failure/', lambda r: checkout_result_view(r, 'failure'), name='checkout-failure'),
     path('checkout/pending/', lambda r: checkout_result_view(r, 'pending'), name='checkout-pending'),
+
+    path('mp/oauth/url/', MPOAuthUrlView.as_view(), name='mp-oauth-url'),
+    path('mp/oauth/callback/', MPOAuthCallbackView.as_view(), name='mp-oauth-callback'),
 ]

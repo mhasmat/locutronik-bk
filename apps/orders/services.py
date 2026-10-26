@@ -1,17 +1,16 @@
-import threading
-from django.db import transaction
-
 from decimal import Decimal
 from datetime import timedelta
+import secrets
+import threading
 
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
-import secrets
-from django.conf import settings
 
-from apps.events.models import Event, TicketType
+from apps.events.models import Event, TicketType, PlatformConfig
 from .models import Order, Ticket
+
+RESERVATION_MINUTES = 20  # Tiempo para completar el pago
 
 
 def _generate_qr_token():
@@ -24,12 +23,22 @@ def _calculate_fee(price, fee_percent):
     return (price * fee_percent / Decimal('100')).quantize(Decimal('0.01'))
 
 
+def _send_email_async(order_id):
+    """Envía el email en un hilo aparte para no bloquear."""
+    from apps.orders.tasks import send_purchase_confirmation
+    try:
+        send_purchase_confirmation.__wrapped__(str(order_id))
+        # Marcamos como enviado
+        Order.objects.filter(id=order_id).update(email_sent=True)
+        print(f"[EMAIL] Enviado para orden {order_id}")
+    except Exception as e:
+        print(f"[EMAIL] Error en orden {order_id}: {e}")
+
+
 def create_order(user, event_id, items):
     """
     Crea una orden pending y reserva stock en DB de forma atómica.
-
     items: lista de dicts [{'ticket_type': <id>, 'quantity': <int>}, ...]
-
     Retorna (order, error_message). Si hay error, order es None.
     """
     try:
@@ -43,13 +52,17 @@ def create_order(user, event_id, items):
     if now > event.sale_end_time:
         return None, "La venta ya finalizó."
 
-    # Validación básica de items
     if not items:
         return None, "Debés seleccionar al menos un ticket."
 
     tt_ids = [item['ticket_type'] for item in items]
     if len(tt_ids) != len(set(tt_ids)):
         return None, "Hay tipos de ticket repetidos en la orden."
+
+    # 👇 Obtenemos la configuración global de la plataforma
+    config = PlatformConfig.objects.first()
+    if not config:
+        config = PlatformConfig.objects.create(fee_type='percentage', fee_value=8.00)
 
     with transaction.atomic():
         # Bloqueamos los TicketType ordenados por id para evitar deadlocks
@@ -85,7 +98,12 @@ def create_order(user, event_id, items):
             tt.quantity_available -= qty
             tt.save(update_fields=['quantity_available'])
 
-            fee_per_ticket = _calculate_fee(tt.price, event.platform_fee_percent)
+            # 👇 Calculamos el fee según la configuración global
+            if config.fee_type == 'percentage':
+                fee_per_ticket = _calculate_fee(tt.price, config.fee_value)
+            else:
+                # Si es monto fijo, lo aplicamos tal cual
+                fee_per_ticket = config.fee_value
 
             subtotal += tt.price * qty
             fee_total += fee_per_ticket * qty
@@ -105,28 +123,17 @@ def create_order(user, event_id, items):
             platform_fee=fee_total,
             total_amount=subtotal + fee_total,
             status='pending',
-            expires_at=now + timedelta(minutes=settings.RESERVATION_MINUTES),
+            expires_at=now + timedelta(minutes=RESERVATION_MINUTES),
             items_snapshot=items_snapshot,
         )
 
         return order, None
 
 
-def _send_email_async(order_id):
-    """Envía el email en un hilo aparte para no bloquear."""
-    from apps.orders.tasks import send_purchase_confirmation
-    try:
-        send_purchase_confirmation.__wrapped__(str(order_id))
-        # Marcamos como enviado
-        Order.objects.filter(id=order_id).update(email_sent=True)
-        print(f"[EMAIL] Enviado para orden {order_id}")
-    except Exception as e:
-        print(f"[EMAIL] Error en orden {order_id}: {e}")
-
 def confirm_order_payment(order, payment_provider='', payment_reference=''):
     """
     Marca la orden como pagada y genera los tickets con sus QRs.
-    Llamado desde el webhook de la pasarela (próximo paso).
+    Llamado desde el webhook de la pasarela.
     """
     with transaction.atomic():
         order = Order.objects.select_for_update().get(id=order.id)
@@ -165,7 +172,7 @@ def confirm_order_payment(order, payment_provider='', payment_reference=''):
 
         Ticket.objects.bulk_create(tickets_to_create)
 
-                # Enviar email en segundo plano (después de que la transacción se confirme)
+        # Enviar email en segundo plano (después de que la transacción se confirme)
         order_id = order.id
         transaction.on_commit(
             lambda: threading.Thread(
@@ -173,9 +180,9 @@ def confirm_order_payment(order, payment_provider='', payment_reference=''):
                 args=(order_id,),
                 daemon=True,
             ).start()
-        )                
+        )
 
-        return True        
+        return True
 
 
 def cancel_order(order, new_status='cancelled'):
@@ -197,6 +204,3 @@ def cancel_order(order, new_status='cancelled'):
         order.status = new_status
         order.save(update_fields=['status'])
         return True
-
-
-from .tasks import send_purchase_confirmation

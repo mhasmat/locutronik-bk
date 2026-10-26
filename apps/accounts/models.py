@@ -15,5 +15,11 @@ class User(AbstractUser):
     phone = models.CharField(max_length=30, blank=True)
     document_number = models.CharField(max_length=30, blank=True)
 
+    # guardar en ID de MP del productor
+    mp_user_id = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="ID de cuenta de Mercado Pago (Collector ID) obtenido vía OAuth."
+    )
+
     def __str__(self):
         return self.username

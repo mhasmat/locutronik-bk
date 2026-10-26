@@ -1,4 +1,5 @@
 import mercadopago
+import urllib.parse
 from django.conf import settings
 
 def get_mp_sdk():
@@ -69,3 +70,42 @@ def get_payment_info(payment_id):
         return None, f"MP devolvió estado {result.get('status')}"
 
     return result['response'], None
+
+
+def get_mp_oauth_url(user_id):
+    """Genera la URL de autorización de Mercado Pago."""
+    # Usamos el APP_ID de Mercado Pago (lo vas a tener en el .env)
+    app_id = settings.MP_CLIENT_ID
+    # La URL a la que MP nos devolverá el código de autorización
+    redirect_uri = f"{settings.BACKEND_URL}/api/payments/mp/oauth/callback/"
+    
+    # Pasamos el user_id en el 'state' para saber quién se está vinculando
+    params = {
+        'client_id': app_id,
+        'response_type': 'code',
+        'platform_id': 'mp',
+        'redirect_uri': redirect_uri,
+        'state': str(user_id)
+    }
+    
+    url = f"https://auth.mercadopago.com.ar/authorization?{urllib.parse.urlencode(params)}"
+    return url
+
+
+def exchange_mp_code_for_token(code):
+    """Intercambia el código de autorización por el access_token y el user_id del vendedor."""
+    import requests
+    
+    url = "https://api.mercadopago.com/oauth/token"
+    payload = {
+        "client_id": settings.MP_CLIENT_ID,
+        "client_secret": settings.MP_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": f"{settings.BACKEND_URL}/api/payments/mp/oauth/callback/"
+    }
+    
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        return response.json() # Contiene access_token, user_id, etc.
+    return None

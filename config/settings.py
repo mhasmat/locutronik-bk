@@ -251,6 +251,9 @@ MP_ACCESS_TOKEN = config('MP_ACCESS_TOKEN', default='')
 MP_PUBLIC_KEY = config('MP_PUBLIC_KEY', default='')
 MP_WEBHOOK_SECRET = config('MP_WEBHOOK_SECRET', default='')
 
+MP_CLIENT_ID = config('MP_CLIENT_ID', default='')
+MP_CLIENT_SECRET = config('MP_CLIENT_SECRET', default='')
+
 BACKEND_URL = config('BACKEND_URL', default='http://127.0.0.1:8000')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 

@@ -36,12 +36,7 @@ class Event(models.Model):
     sale_start_time = models.DateTimeField()
     sale_end_time = models.DateTimeField()
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-
-    # Porcentaje del fee que cobra la plataforma (ej: 8.00 = 8%)
-    platform_fee_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, default=8.00
-    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')    
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -78,3 +73,29 @@ class TicketType(models.Model):
     @property
     def is_sold_out(self):
         return self.quantity_available <= 0
+
+
+# Crear el modelo de configuración de comisiones
+class PlatformConfig(models.Model):
+    """
+    Configuración global de la plataforma.
+    Solo debería haber un registro en esta tabla.
+    """
+    FEE_TYPE_CHOICES = [
+        ('percentage', 'Porcentaje (%)'),
+        ('fixed', 'Monto Fijo ($)'),
+    ]
+    
+    fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='percentage')
+    fee_value = models.DecimalField(max_digits=10, decimal_places=2, default=8.00)
+    
+    # Cuenta de MP de Locutronik (opcional, si querés que cambie)
+    mp_locutronik_account = models.CharField(max_length=100, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # Asegurarnos de que solo haya un registro (ID=1)
+        self.id = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Comisión: {self.fee_value} {'%' if self.fee_type == 'percentage' else '$'}"

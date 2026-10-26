@@ -1,7 +1,7 @@
 import json
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Venue, Event, TicketType
+from .models import Venue, Event, TicketType, PlatformConfig
 
 
 class VenueSerializer(serializers.ModelSerializer):
@@ -24,6 +24,7 @@ class TicketTypeSerializer(serializers.ModelSerializer):
 
 
 class EventListSerializer(serializers.ModelSerializer):
+    """Serializer liviano para listados."""
     venue = VenueSerializer(read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
     min_price = serializers.SerializerMethodField()
@@ -41,9 +42,12 @@ class EventListSerializer(serializers.ModelSerializer):
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
+    """Serializer completo, con tipos de ticket anidados."""
     venue = VenueSerializer()
     ticket_types = TicketTypeSerializer(many=True, read_only=True)
     organizer_username = serializers.CharField(source='organizer.username', read_only=True)
+    # 👇 Leemos la comisión global en lugar del campo del modelo
+    platform_fee_percent = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -56,6 +60,23 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         )
         read_only_fields = ('organizer', 'created_at', 'updated_at')
+
+    def get_platform_fee_percent(self, obj):
+        # Buscamos la configuración global (o creamos una por defecto)
+        config = PlatformConfig.objects.first()
+        if not config:
+            config = PlatformConfig.objects.create(fee_type='percentage', fee_value=8.00)
+        
+        # Si el fee es fijo, calculamos el porcentaje equivalente basado en el precio del primer ticket
+        # O simplemente devolvemos el valor si es porcentaje.
+        if config.fee_type == 'percentage':
+            return str(config.fee_value)
+        else:
+            # Si es un monto fijo, calculamos un porcentaje estimado para el frontend
+            tt = obj.ticket_types.filter(is_active=True).order_by('price').first()
+            if tt and tt.price > 0:
+                return str((config.fee_value / tt.price) * 100)
+            return "0.00"
 
 
 class TicketTypeInputSerializer(serializers.ModelSerializer):
@@ -78,24 +99,16 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'description', 'image', 'venue',
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
-            'status', 'platform_fee_percent', 'ticket_types',
+            'status', 'ticket_types', # 👈 Ya no se pide platform_fee_percent
         )
 
     def to_internal_value(self, data):
-        # 1. Convertimos el QueryDict de Django a un diccionario normal
-        # Esto permite modificar listas y borrar llaves sin que se rompa
-        if hasattr(data, 'dict'):
-            data = data.dict()
-        else:
-            data = dict(data)
-
-        # 2. Manejo de 'image' (ignorar si es edición y no es un archivo nuevo)
+        data = data.copy()
         if 'image' in data:
             img = data.get('image')
             if not img or img == 'null' or img == '' or isinstance(img, str):
                 data.pop('image', None)
 
-        # 3. Manejo de 'ticket_types' (parsear el string JSON)
         if 'ticket_types' in data:
             val = data['ticket_types']
             if isinstance(val, str):
@@ -115,7 +128,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        # Si estamos creando (self.instance is None) y no hay imagen, error.
         if self.instance is None and 'image' not in attrs:
             raise serializers.ValidationError({'image': 'La imagen es obligatoria para crear un evento.'})
 

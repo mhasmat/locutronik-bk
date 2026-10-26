@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -6,6 +7,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from apps.orders.models import Order
 from apps.orders.services import confirm_order_payment
 from .services import create_checkout_preference, get_payment_info
+
+from django.contrib.auth import get_user_model
+from .services import get_mp_oauth_url, exchange_mp_code_for_token
 
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
@@ -135,6 +139,42 @@ class MercadoPagoWebhookView(APIView):
 
         # MP espera siempre 200, si devolvemos error reintenta
         return Response({'detail': 'OK'}, status=200)
+
+class MPOAuthUrlView(APIView):
+    """GET /api/payments/mp/oauth/url/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        url = get_mp_oauth_url(request.user.id)
+        return Response({'url': url})
+
+
+class MPOAuthCallbackView(APIView):
+    """GET /api/payments/mp/oauth/callback/ (Llamado por Mercado Pago)"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        code = request.query_params.get('code')
+        user_id = request.query_params.get('state')
+        
+        if not code or not user_id:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=oauth_failed")
+            
+        token_data = exchange_mp_code_for_token(code)
+        if token_data and 'user_id' in token_data:
+            User = get_user_model()
+            try:
+                user = User.objects.get(id=user_id)
+                user.mp_user_id = str(token_data['user_id'])
+                # Opcional: guardar el access_token del productor si lo necesitamos luego
+                user.save(update_fields=['mp_user_id'])
+                
+                # Redirigimos al productor con un mensaje de éxito
+                return redirect(f"{settings.FRONTEND_URL}/productor?linked=true")
+            except User.DoesNotExist:
+                pass
+                
+        return redirect(f"{settings.FRONTEND_URL}/productor?error=user_not_found")
 
 
 def checkout_result_view(request, status):
