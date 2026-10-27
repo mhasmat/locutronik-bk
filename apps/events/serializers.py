@@ -84,19 +84,29 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         )
 
     def to_internal_value(self, data):
-        data = data.copy()
+        # 1. Convertimos el QueryDict inmutable a un diccionario normal
+        if hasattr(data, 'dict'):
+            data = data.dict()
+        else:
+            data = dict(data)
+
+        # 2. Parseamos ticket_types si viene como string JSON
+        if 'ticket_types' in data:
+            val = data['ticket_types']
+            print(f"🔍 DEBUG: ticket_types recibido como: {type(val)} -> {val}")
+            if isinstance(val, str):
+                try:
+                    import json
+                    data['ticket_types'] = json.loads(val)
+                except json.JSONDecodeError as e:
+                    print(f"❌ ERROR parseando ticket_types: {e}")
+                    data['ticket_types'] = []
+
+        # 3. Manejamos la imagen
         if 'image' in data:
             img = data.get('image')
             if not img or img == 'null' or img == '' or isinstance(img, str):
                 data.pop('image', None)
-
-        if 'ticket_types' in data:
-            val = data['ticket_types']
-            if isinstance(val, str):
-                try:
-                    data['ticket_types'] = json.loads(val)
-                except json.JSONDecodeError:
-                    pass
 
         return super().to_internal_value(data)
 
