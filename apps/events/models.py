@@ -21,6 +21,16 @@ class Event(models.Model):
         ('finished', 'Finalizado'),
     ]
 
+    FEE_TYPE_CHOICES = [
+        ('percentage', 'Porcentaje (%)'),
+        ('fixed', 'Monto Fijo ($)'),
+    ]
+    
+    FEE_MODE_CHOICES = [
+        ('sum', 'Sumar a la Entrada'),
+        ('subtract', 'Deducir de la Entrada'),
+    ]
+
     organizer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -36,18 +46,15 @@ class Event(models.Model):
     sale_start_time = models.DateTimeField()
     sale_end_time = models.DateTimeField()
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # 👇 NUEVOS CAMPOS DE COMISIÓN
+    fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='percentage')
+    fee_value = models.DecimalField(max_digits=10, decimal_places=2, default=8.00)
+    fee_mode = models.CharField(max_length=20, choices=FEE_MODE_CHOICES, default='sum')    
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    # 👇 NUEVOS CAMPOS DE FEE POR EVENTO
-    FEE_TYPE_CHOICES = [
-        ('percentage', 'Porcentaje (%)'),
-        ('fixed', 'Monto Fijo ($)'),
-    ]
-    fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='percentage')
-    fee_value = models.DecimalField(max_digits=10, decimal_places=2, default=8.00)
 
     class Meta:
         ordering = ['-start_time']
@@ -67,9 +74,7 @@ class TicketType(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity_total = models.PositiveIntegerField()
     quantity_available = models.PositiveIntegerField()
-
-    max_per_user = models.PositiveIntegerField(default=4)
-
+    max_per_user = models.PositiveIntegerField(default=5)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -84,16 +89,11 @@ class TicketType(models.Model):
 
 
 # Crear el modelo de configuración de comisiones
-class PlatformConfig(models.Model):
-    """
-    Configuración global de la plataforma.
-    Solo debería haber un registro en esta tabla.
-    """
+class PlatformConfig(models.Model):    
     FEE_TYPE_CHOICES = [
         ('percentage', 'Porcentaje (%)'),
         ('fixed', 'Monto Fijo ($)'),
-    ]
-    
+    ]    
     fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='percentage')
     fee_value = models.DecimalField(max_digits=10, decimal_places=2, default=8.00)
     
@@ -106,4 +106,4 @@ class PlatformConfig(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Comisión: {self.fee_value} {'%' if self.fee_type == 'percentage' else '$'}"
+        return f"Comisión global: {self.fee_value} {'%' if self.fee_type == 'percentage' else '$'}"

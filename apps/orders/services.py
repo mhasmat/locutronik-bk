@@ -89,8 +89,14 @@ def create_order(user, event_id, items):
             else:
                 fee_per_ticket = fee_value
 
-            subtotal += tt.price * qty
-            fee_total += fee_per_ticket * qty
+            # 👇 LÓGICA DE FEE (SUMA O RESTA)
+            if event.fee_mode == 'sum':
+                subtotal += tt.price * qty
+                fee_total += fee_per_ticket * qty
+            else: # 'subtract'
+                # El cliente paga el precio base. El productor recibe el base - fee.
+                subtotal += (tt.price - fee_per_ticket) * qty
+                fee_total += fee_per_ticket * qty
 
             items_snapshot.append({
                 'ticket_type_id': tt.id,
@@ -100,6 +106,7 @@ def create_order(user, event_id, items):
                 'fee': str(fee_per_ticket),
             })
 
+        # Total final (en ambos casos es subtotal + fee_total)
         order = Order.objects.create(
             user=user,
             event=event,

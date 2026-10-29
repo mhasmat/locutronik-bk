@@ -33,7 +33,7 @@ class EventListSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'image', 'start_time', 'end_time',
             'status', 'venue', 'organizer_username', 'min_price',
-            'fee_type', 'fee_value', # 👈
+            'fee_type', 'fee_value', 'fee_mode' # 👈
         )
 
     def get_min_price(self, obj):
@@ -52,7 +52,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'image',
             'venue', 'ticket_types',
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
-            'status', 'fee_type', 'fee_value', # 👈
+            'status', 'fee_type', 'fee_value', 'fee_mode',# 👈
             'organizer', 'organizer_username',
             'created_at', 'updated_at',
         )
@@ -80,7 +80,7 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'image', 'venue',
             'start_time', 'end_time', 'sale_start_time', 'sale_end_time',
             'status', 'ticket_types',
-            'fee_type', 'fee_value', # 👈
+            'fee_type', 'fee_value', 'fee_mode' # 👈
         )
 
     def to_internal_value(self, data):
@@ -122,6 +122,18 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         if self.instance is None and 'image' not in attrs:
             raise serializers.ValidationError({'image': 'La imagen es obligatoria para crear un evento.'})
 
+        # 👇 VALIDACIONES DE COMISIÓN
+        fee_type = attrs.get('fee_type', 'percentage')
+        fee_value = attrs.get('fee_value', 8.00)
+        
+        if fee_type == 'percentage':
+            if not (5.00 <= float(fee_value) <= 20.00):
+                raise serializers.ValidationError({'fee_value': 'El porcentaje debe estar entre 5% y 20%.'})
+        else:
+            if not (1000.00 <= float(fee_value) <= 100000.00):
+                raise serializers.ValidationError({'fee_value': 'El monto fijo debe estar entre $1.000 y $100.000.'})
+
+        
         start = attrs.get('start_time')
         end = attrs.get('end_time')
         sale_start = attrs.get('sale_start_time')
