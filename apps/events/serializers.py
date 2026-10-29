@@ -7,7 +7,7 @@ from .models import Venue, Event, TicketType, PlatformConfig
 class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
-        fields = ('id', 'name', 'address', 'city', 'capacity')
+        fields = ('id', 'name', 'address', 'city', 'capacity', 'maps_url')
 
 
 class TicketTypeSerializer(serializers.ModelSerializer):

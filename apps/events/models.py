@@ -7,6 +7,13 @@ class Venue(models.Model):
     address = models.CharField(max_length=500)
     city = models.CharField(max_length=100, blank=True)
     capacity = models.PositiveIntegerField(default=0)
+    # 👇 NUEVO CAMPO
+    maps_url = models.URLField(
+        max_length=500, 
+        blank=True, 
+        null=True, 
+        help_text="Link de Google Maps del lugar (opcional)"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
