@@ -82,6 +82,9 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             'status', 'ticket_types',
             'fee_type', 'fee_value', 'fee_mode' # 👈
         )
+        extra_kwargs = {
+            'sale_end_time': {'required': False} # 👈 Ahora es opcional, el backend lo calcula
+        }
 
     def to_internal_value(self, data):
         # 1. Convertimos el QueryDict inmutable a un diccionario normal
@@ -133,19 +136,24 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             if not (1000.00 <= float(fee_value) <= 100000.00):
                 raise serializers.ValidationError({'fee_value': 'El monto fijo debe estar entre $1.000 y $100.000.'})
 
-        
         start = attrs.get('start_time')
         end = attrs.get('end_time')
         sale_start = attrs.get('sale_start_time')
-        sale_end = attrs.get('sale_end_time')
 
         if start and end and end <= start:
-            raise serializers.ValidationError({'end_time': 'Debe ser posterior al inicio.'})
-        if sale_start and sale_end and sale_end <= sale_start:
-            raise serializers.ValidationError({'sale_end_time': 'Debe ser posterior al inicio de venta.'})
-        if sale_end and start and sale_end > start:
-            raise serializers.ValidationError({'sale_end_time': 'La venta debe cerrar antes del inicio del evento.'})
+            raise serializers.ValidationError({'end_time': 'Debe ser posterior al inicio del evento.'})
+        if sale_start and start and sale_start >= start:
+            raise serializers.ValidationError({'sale_start_time': 'El inicio de venta debe ser antes del inicio del evento.'})
 
+        # 👇 CÁLCULO AUTOMÁTICO DEL FIN DE VENTA (30 min antes del fin del evento)
+        from datetime import timedelta
+        if end:
+            attrs['sale_end_time'] = end - timedelta(minutes=30)
+        elif self.instance and self.instance.end_time:
+            # Si es un PATCH y no viene end_time, usamos el que ya está en la BD
+            attrs['sale_end_time'] = self.instance.end_time - timedelta(minutes=30)
+
+        # Validamos nombres de tickets duplicados
         ticket_types = attrs.get('ticket_types', [])
         names = [tt.get('name', '').strip().lower() for tt in ticket_types if tt.get('name')]
         if len(names) != len(set(names)):
