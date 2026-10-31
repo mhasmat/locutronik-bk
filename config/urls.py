@@ -12,12 +12,14 @@ from apps.orders.cron_views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
 
+    # Apps
     path('api/auth/', include('apps.accounts.urls')),
     path('api/events/', include('apps.events.urls')),
     path('api/orders/', include('apps.orders.urls')),
     path('api/payments/', include('apps.payments.urls')),
     path('api/reports/', include('apps.reports.urls')),
 
+    # Rutas de Cron (¡No las borres!)
     path('api/cron/expire-orders/', ExpireOrdersCronView.as_view()),
     path('api/cron/sync-mp-payments/', SyncMpPaymentsCronView.as_view()),
     path('api/cron/send-pending-emails/', SendPendingEmailsCronView.as_view()),
@@ -25,4 +27,3 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-                                                                          

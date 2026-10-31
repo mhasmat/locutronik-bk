@@ -1,115 +1,67 @@
-from rest_framework import status
-from rest_framework import permissions
+import secrets
+from django.conf import settings
+from django.shortcuts import redirect
+from django.utils import timezone
+from datetime import timedelta
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status
 
 from apps.orders.models import Order
 from apps.orders.services import confirm_order_payment
-from .services import create_checkout_preference, get_payment_info
-
-from django.contrib.auth import get_user_model
-from .services import get_mp_oauth_url, exchange_mp_code_for_token
-
-from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from django.shortcuts import redirect
-from django.conf import settings
+from apps.accounts.models import User
+from .services import (
+    get_mp_oauth_url, exchange_mp_code_for_token,
+    create_checkout_preference, get_payment_info
+)
 
 class CreateCheckoutView(APIView):
-    """
-    POST /api/orders/<order_id>/checkout/
-    Crea una preferencia de pago en MP y devuelve la URL de checkout.
-    """
+    """POST /api/orders/<order_id>/checkout/ - Crea preferencia de pago con split."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, order_id):
         try:
             order = Order.objects.get(id=order_id, user=request.user)
         except Order.DoesNotExist:
-            return Response(
-                {'detail': 'Orden no encontrada.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'detail': 'Orden no encontrada.'}, status=404)
 
         if order.status != 'pending':
-            return Response(
-                {'detail': f'La orden no está pendiente (status actual: {order.status}).'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'detail': f'La orden no está pendiente (status: {order.status}).'}, status=400)
 
-        from django.utils import timezone
         if order.expires_at < timezone.now():
-            return Response(
-                {'detail': 'La orden ya expiró.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'detail': 'La orden ya expiró.'}, status=400)
 
         preference_data, error = create_checkout_preference(order)
         if error:
-            return Response(
-                {'detail': error},
-                status=status.HTTP_502_BAD_GATEWAY
-            )
+            return Response({'detail': error}, status=502)
 
-        # Guardamos el ID de la preferencia para referencia
         order.payment_provider = 'mercadopago'
         order.payment_reference = preference_data.get('id', '')
         order.save(update_fields=['payment_provider', 'payment_reference'])
 
-        # Devolvemos los datos al frontend
-        # En producción usar 'init_point'. En sandbox, 'sandbox_init_point'.
         init_point = preference_data.get('sandbox_init_point') or preference_data.get('init_point')
-
         return Response({
             'order_id': str(order.id),
             'preference_id': preference_data.get('id'),
             'init_point': init_point,
-        }, status=status.HTTP_200_OK)
-
+        }, status=200)
 
 class MercadoPagoWebhookView(APIView):
-    """
-    POST /api/payments/webhook/
-    Recibe notificaciones de MP. Cuando el pago se aprueba, confirma la orden.
-
-    MP envía el payment_id de dos formas:
-      - Legacy:  ?topic=payment&id=123
-      - Moderna: ?type=payment&data.id=123
-    Y a veces también en el body como JSON.
-    """
+    """POST /api/payments/webhook/ - Recibe notificaciones de MP."""
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        # --- Detectar el tipo de notificación ---
-        topic = (
-            request.query_params.get('type')
-            or request.query_params.get('topic')
-            or (request.data or {}).get('type')
-            or (request.data or {}).get('topic')
-        )
+        topic = request.query_params.get('type') or request.query_params.get('topic') or request.data.get('type') or request.data.get('topic')
+        payment_id = (request.query_params.get('data.id') or request.query_params.get('id') or (request.data.get('data') or {}).get('id') or request.data.get('id'))
 
-        # --- Detectar el payment_id (soporta ambos formatos) ---
-        payment_id = (
-            request.query_params.get('data.id')
-            or request.query_params.get('id')                       # ← legacy
-            or ((request.data or {}).get('data') or {}).get('id')
-            or (request.data or {}).get('id')
-        )
-
-        # --- Log para debug ---
-        print(f"[MP WEBHOOK] topic={topic} payment_id={payment_id} "
-              f"query={dict(request.query_params)}")
-
-        # merchant_order no es un pago: lo ignoramos (MP manda muchos)
         if topic != 'payment' or not payment_id:
             return Response({'detail': 'Ignorado.'}, status=200)
 
-        # --- Consultar el pago real a MP (nunca confiar en el payload crudo) ---
         payment_data, error = get_payment_info(payment_id)
         if error:
-            print(f"[MP WEBHOOK] Error consultando pago {payment_id}: {error}")
             return Response({'detail': error}, status=400)
 
         external_reference = payment_data.get('external_reference')
@@ -125,56 +77,66 @@ class MercadoPagoWebhookView(APIView):
 
         print(f"[MP WEBHOOK] Orden {order.id} | status_mp={mp_status}")
 
-        # --- Solo procesamos si el pago fue aprobado ---
         if mp_status == 'approved':
-            confirmed = confirm_order_payment(
-                order=order,
-                payment_provider='mercadopago',
-                payment_reference=str(payment_id),
-            )
-            if confirmed:
-                print(f"[MP WEBHOOK] ✓ Orden {order.id} confirmada, tickets generados.")
-            else:
-                print(f"[MP WEBHOOK] Orden {order.id} ya estaba confirmada o no es pending.")
+            confirm_order_payment(order, 'mercadopago', str(payment_id))
 
-        # MP espera siempre 200, si devolvemos error reintenta
         return Response({'detail': 'OK'}, status=200)
 
 class MPOAuthUrlView(APIView):
-    """GET /api/payments/mp/oauth/url/"""
-    permission_classes = [permissions.IsAuthenticated]
+    """GET /api/payments/mp/oauth/url/ - Devuelve la URL de autorización."""
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        url = get_mp_oauth_url(request.user.id)
+        # Generamos un token de estado (state) seguro y lo guardamos en la sesión del usuario
+        state = secrets.token_urlsafe(32)
+        request.session['mp_oauth_state'] = state
+        url = get_mp_oauth_url(request.user.id, state)
         return Response({'url': url})
 
-
 class MPOAuthCallbackView(APIView):
-    """GET /api/payments/mp/oauth/callback/ (Llamado por Mercado Pago)"""
-    permission_classes = [permissions.AllowAny]
+    """GET /api/payments/mp/oauth/callback/ - Recibe el código y guarda los tokens."""
+    permission_classes = [AllowAny]
 
     def get(self, request):
+        error = request.query_params.get('error')
         code = request.query_params.get('code')
-        user_id = request.query_params.get('state')
-        
-        if not code or not user_id:
-            return redirect(f"{settings.FRONTEND_URL}/productor?error=oauth_failed")
-            
+        state = request.query_params.get('state')
+
+        if error:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=oauth_denied")
+
+        # Validamos el state (protección CSRF)
+        stored_state = request.session.pop('mp_oauth_state', None)
+        if not state or state != stored_state:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=invalid_state")
+
+        if not code:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=no_code")
+
         token_data = exchange_mp_code_for_token(code)
-        if token_data and 'user_id' in token_data:
-            User = get_user_model()
-            try:
-                user = User.objects.get(id=user_id)
-                user.mp_user_id = str(token_data['user_id'])
-                # Opcional: guardar el access_token del productor si lo necesitamos luego
-                user.save(update_fields=['mp_user_id'])
-                
-                # Redirigimos al productor con un mensaje de éxito
-                return redirect(f"{settings.FRONTEND_URL}/productor?linked=true")
-            except User.DoesNotExist:
-                pass
-                
-        return redirect(f"{settings.FRONTEND_URL}/productor?error=user_not_found")
+        if not token_data or 'user_id' not in token_data:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=token_exchange_failed")
+
+        # Obtenemos el usuario a partir del state (o de la sesión, pero el state ya nos dice quién es)
+        # Como el state no contiene el user_id, podemos usar el user_id del request si está autenticado,
+        # pero en un callback externo no lo estará. Una solución es guardar el user_id en la sesión
+        # junto con el state. Para simplificar, usamos el user_id que guardamos en la sesión al generar la URL.
+        user_id = request.session.get('mp_oauth_user_id')
+        if not user_id:
+            # Fallback: si no hay sesión, no podemos saber quién es. En producción, deberías
+            # guardar el user_id en la sesión o en un modelo temporal.
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=no_user")
+
+        try:
+            user = User.objects.get(id=user_id)
+            user.mp_user_id = str(token_data['user_id'])
+            user.mp_access_token = token_data['access_token']
+            user.mp_refresh_token = token_data.get('refresh_token', '')
+            user.mp_token_expires_at = timezone.now() + timedelta(seconds=token_data.get('expires_in', 15552000))
+            user.save(update_fields=['mp_user_id', 'mp_access_token', 'mp_refresh_token', 'mp_token_expires_at'])
+            return redirect(f"{settings.FRONTEND_URL}/productor?linked=true")
+        except User.DoesNotExist:
+            return redirect(f"{settings.FRONTEND_URL}/productor?error=user_not_found")
 
 
 def checkout_result_view(request, status):

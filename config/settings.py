@@ -54,7 +54,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',           # ← nuevo: sirve estáticos
+    'whitenoise.middleware.WhiteNoiseMiddleware', # ← nuevo: sirve estáticos
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -206,17 +206,6 @@ SUPABASE_BUCKET_NAME = config('SUPABASE_BUCKET_NAME', default='media')
 
 USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_KEY)
 
-# ============================================
-# Archivos estáticos y media (Supabase Storage)
-# ============================================
-
-# Supabase Storage
-SUPABASE_URL = config('SUPABASE_URL', default='')
-SUPABASE_KEY = config('SUPABASE_KEY', default='')
-SUPABASE_BUCKET_NAME = config('SUPABASE_BUCKET_NAME', default='media')
-
-USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_KEY)
-
 if USE_SUPABASE_STORAGE:
     STORAGES = {
         'default': {
@@ -245,7 +234,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ============================================
-# Mercado Pago
+# Mercado Pago (Split Payments / Marketplace)
 # ============================================
 MP_ACCESS_TOKEN = config('MP_ACCESS_TOKEN', default='')
 MP_PUBLIC_KEY = config('MP_PUBLIC_KEY', default='')
