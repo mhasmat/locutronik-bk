@@ -10,8 +10,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name',
-                  'is_producer', 'is_pos_operator', 'is_staff', 'phone', 'phone_display', 'document_number')
+        fields = (
+            'id', 'username', 'email', 'first_name', 'last_name', 'is_producer', 'is_pos_operator', 'is_staff', 'phone', 'phone_display', 'document_number', 'mp_user_id',
+        )
         read_only_fields = ('id', 'is_producer', 'is_pos_operator', 'is_staff')  # is_producer se cambia solo desde admin
 
     def get_phone_display(self, obj):

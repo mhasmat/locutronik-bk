@@ -87,9 +87,10 @@ class MPOAuthUrlView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Generamos un token de estado (state) seguro y lo guardamos en la sesión del usuario
-        state = secrets.token_urlsafe(32)
-        request.session['mp_oauth_state'] = state
+        # 👇 Pasamos el user_id dentro del 'state' de forma segura
+        random_str = secrets.token_urlsafe(16)
+        state = f"{request.user.id}_{random_str}"
+        
         url = get_mp_oauth_url(request.user.id, state)
         return Response({'url': url})
 
@@ -105,27 +106,15 @@ class MPOAuthCallbackView(APIView):
         if error:
             return redirect(f"{settings.FRONTEND_URL}/productor?error=oauth_denied")
 
-        # Validamos el state (protección CSRF)
-        stored_state = request.session.pop('mp_oauth_state', None)
-        if not state or state != stored_state:
-            return redirect(f"{settings.FRONTEND_URL}/productor?error=invalid_state")
-
-        if not code:
+        if not code or not state or '_' not in state:
             return redirect(f"{settings.FRONTEND_URL}/productor?error=no_code")
+
+        # 👇 Extraemos el user_id del state
+        user_id = state.split('_')[0]
 
         token_data = exchange_mp_code_for_token(code)
         if not token_data or 'user_id' not in token_data:
             return redirect(f"{settings.FRONTEND_URL}/productor?error=token_exchange_failed")
-
-        # Obtenemos el usuario a partir del state (o de la sesión, pero el state ya nos dice quién es)
-        # Como el state no contiene el user_id, podemos usar el user_id del request si está autenticado,
-        # pero en un callback externo no lo estará. Una solución es guardar el user_id en la sesión
-        # junto con el state. Para simplificar, usamos el user_id que guardamos en la sesión al generar la URL.
-        user_id = request.session.get('mp_oauth_user_id')
-        if not user_id:
-            # Fallback: si no hay sesión, no podemos saber quién es. En producción, deberías
-            # guardar el user_id en la sesión o en un modelo temporal.
-            return redirect(f"{settings.FRONTEND_URL}/productor?error=no_user")
 
         try:
             user = User.objects.get(id=user_id)
@@ -134,6 +123,7 @@ class MPOAuthCallbackView(APIView):
             user.mp_refresh_token = token_data.get('refresh_token', '')
             user.mp_token_expires_at = timezone.now() + timedelta(seconds=token_data.get('expires_in', 15552000))
             user.save(update_fields=['mp_user_id', 'mp_access_token', 'mp_refresh_token', 'mp_token_expires_at'])
+            
             return redirect(f"{settings.FRONTEND_URL}/productor?linked=true")
         except User.DoesNotExist:
             return redirect(f"{settings.FRONTEND_URL}/productor?error=user_not_found")
